@@ -1,0 +1,57 @@
+{
+  "version": "1.0",
+
+  "window_size_seconds": 10,
+
+  "feature_count": 4,
+
+  "features": [
+    {
+      "name": "typing_speed",
+      "type": "float",
+      "description": "number of key presses per second",
+
+      "scaling": {
+        "method": "min_max",
+        "min": 0.0,
+        "max": 10.0
+      }
+    },
+
+    {
+      "name": "mouse_velocity",
+      "type": "float",
+      "description": "average mouse movement speed",
+
+      "scaling": {
+        "method": "min_max",
+        "min": 0.0,
+        "max": 5000.0
+      }
+    },
+
+    {
+      "name": "idle_ratio",
+      "type": "float",
+      "description": "ratio of idle time within window",
+
+      "scaling": {
+        "method": "min_max",
+        "min": 0.0,
+        "max": 1.0
+      }
+    },
+
+    {
+      "name": "window_switch_frequency",
+      "type": "float",
+      "description": "number of application switches per second",
+
+      "scaling": {
+        "method": "min_max",
+        "min": 0.0,
+        "max": 5.0
+      }
+    }
+  ]
+}
