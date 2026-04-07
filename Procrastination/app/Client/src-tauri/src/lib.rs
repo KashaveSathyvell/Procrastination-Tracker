@@ -16,3 +16,4 @@ pub fn run() {
 pub mod models;
 pub mod capture;
 pub mod database;
+pub mod features;
