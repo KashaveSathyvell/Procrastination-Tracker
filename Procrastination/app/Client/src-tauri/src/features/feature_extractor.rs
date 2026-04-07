@@ -1,20 +1,26 @@
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::thread;
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-use crate::database::sqlite::insert_features;
-
-use crate::database::sqlite::collect_events;
+use crate::database::sqlite::{collect_events, insert_features};
 use crate::models::input_event::{FeatureVectors, Input};
 
 pub fn run_extractor(db_path: &Path) {
-    let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
-    let window_start = window_end - 60;
+    loop {
+        let start_time = std::time::Instant::now();
+        let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let window_start = window_end - 60;
 
-    let events = collect_events(db_path, window_start, window_end).unwrap();
+        let events = collect_events(db_path, window_start, window_end).unwrap();
 
-    let features = extract_features(events, window_start, window_end);
+        let features = extract_features(events, window_start, window_end);
 
+        insert_features(db_path, &features).expect("TODO: panic message");
 
+        let elapsed = start_time.elapsed();
+        let sleep = Duration::from_secs(60).saturating_sub(elapsed);
+        thread::sleep(sleep);
+    }
 }
 
 pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) -> FeatureVectors {
@@ -36,7 +42,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
         }).count() as f64
     };
 
-    let repetitive_ratio = repetitive_key / key_count;
+    let repetitive_ratio = if key_count == 0.0 { 0.0 } else {repetitive_key / key_count};
 
     //mouse vel. cal distancebetween each mouse move event. divide 60 to find ratio
     let mouse_move: Vec<&Input> = events.iter().filter(|event| event.event_action == "MouseMove").collect();
@@ -87,12 +93,13 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
     let window_switch_ratio = window_switch / 60.0;
 
     let feature_vector = FeatureVectors {
-        timestamp: ,
+        timestamp: window_end,
         typing_speed,
         repetitive_key_ratio: repetitive_ratio,
         mouse_velocity,
         idle_ratio,
         window_switch_frequency: window_switch_ratio,
-    }
-
+    };
+    println!("Features calculated: {:?}", feature_vector);
+    feature_vector
 }

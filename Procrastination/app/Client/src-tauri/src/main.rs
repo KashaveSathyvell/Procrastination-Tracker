@@ -26,22 +26,24 @@ fn main() {
     let (tx, rx) = mpsc::channel::<Input>();
 
     // let tx1 = tx.clone();
-    let handle = thread::spawn(move || {
+    let handle1 = thread::spawn(move || {
         logging(tx);
     });
 
-    let handle = thread::spawn(move || {
+    let handle2 = thread::spawn(move || {
         for received in rx {
             // println!("Got: {:?}", received);
             insert_events(Path::new("behavior.db"), &received);
         }
     });
     
-    let handle = thread::spawn(move || {
+    let handle3 = thread::spawn(move || {
         run_extractor(Path::new("behavior.db"));
     });
 
-    handle.join().unwrap();
+    handle1.join().unwrap();
+    handle2.join().unwrap();
+    handle3.join().unwrap();
 
     // tauri::Builder::default()
     //     .setup(|app| {

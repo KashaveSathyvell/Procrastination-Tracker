@@ -71,7 +71,7 @@ pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
         params![input.timestamp, input.event_type, input.event_action, input.key_code.as_deref(), input.mouse_x, input.mouse_y, input.wheel_x, input.wheel_y, input.button.as_deref(), input.active_window]
     )?;
 
-    println!("Data added into INPUT database: {:?}", input);
+    // println!("Data added into INPUT database: {:?}", input);
     Ok(())
 }
 
@@ -80,8 +80,8 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<()> 
 
     conn.execute(
         "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency) \
-        Values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency, features.idle_ratio, features.window_switch_frequency]
+        Values (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency]
     )?;
 
     println!("Data added into FEATURE database: {:?}", features);
@@ -102,16 +102,16 @@ pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Res
 
     let rows = stmt.query_map(params![window_start, window_end], |row| {
         Ok(Input{
-            timestamp: row.get(1)?,
-            event_type: row.get(2)?,
-            event_action: row.get(3)?,
-            key_code: row.get(4)?,
-            mouse_x: row.get(5)?,
-            mouse_y: row.get(6)?,
-            wheel_x: row.get(7)?,
-            wheel_y: row.get(8)?,
-            button: row.get(9)?,
-            active_window: row.get(10)?
+            timestamp: row.get(0)?,
+            event_type: row.get(1)?,
+            event_action: row.get(2)?,
+            key_code: row.get(3)?,
+            mouse_x: row.get(4)?,
+            mouse_y: row.get(5)?,
+            wheel_x: row.get(6)?,
+            wheel_y: row.get(7)?,
+            button: row.get(8)?,
+            active_window: row.get(9)?
         })
     })?;
 
