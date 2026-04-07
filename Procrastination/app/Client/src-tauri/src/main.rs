@@ -7,7 +7,9 @@ use std::thread;
 use std::time::Duration;
 use std::path::Path;
 use tauri::async_runtime::handle;
+
 use client_lib::capture::keyboard::{callback, logging};
+use client_lib::features::feature_extractor::run_extractor;
 
 mod config;
 use client_lib::database::sqlite::{initialize_database, insert_events};
@@ -33,6 +35,10 @@ fn main() {
             // println!("Got: {:?}", received);
             insert_events(Path::new("behavior.db"), &received);
         }
+    });
+    
+    let handle = thread::spawn(move || {
+        run_extractor(Path::new("behavior.db"));
     });
 
     handle.join().unwrap();

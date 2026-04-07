@@ -1,93 +1,98 @@
-#[derive(Debug)]
-pub struct FeatureVector {
-    pub typing_speed: f32,
-    pub mouse_velocity: f32,
-    pub idle_ratio: f32,
-    pub window_switch_frequency: f32,
+use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
+
+use crate::database::sqlite::insert_features;
+
+use crate::database::sqlite::collect_events;
+use crate::models::input_event::{FeatureVectors, Input};
+
+pub fn run_extractor(db_path: &Path) {
+    let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+    let window_start = window_end - 60;
+
+    let events = collect_events(db_path, window_start, window_end).unwrap();
+
+    let features = extract_features(events, window_start, window_end);
+
+
 }
 
-#[derive(Debug)]
-pub struct InputEvent {
-    pub timestamp: i64,
-    pub event_type: String,
-    pub event_action: String,
-    pub delta_x: Option<i32>,
-    pub delta_y: Option<i32>,
-    pub active_window: Option<String>,
-}
+pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) -> FeatureVectors {
+    let window_time = 60;
 
-pub fn compute_features(mut events: Vec<InputEvent>, window_seconds: i64) -> FeatureVector {
-    // Ensure events are sorted (VERY IMPORTANT)
-    events.sort_by_key(|e| e.timestamp);
+    //get the typing speed. sum of key press events / 60
+    let key_press: Vec<&Input> = events.iter().filter(|event| event.event_action == "KeyPress").collect();
+    let key_count = key_press.len() as f64;
+    let typing_speed = key_count/60.0;
+    println!("Amount of key presses: {}", key_count);
 
-    // Edge Case: no activity at all
-    if events.is_empty() {
-        return FeatureVector {
-            typing_speed: 0.0,
-            mouse_velocity: 0.0,
-            idle_ratio: 1.0,
-            window_switch_frequency: 0.0,
-        };
+    //get the repetitive key ratio(multiple smae key clicks or not?), divide 60(sliding window time)
+    let repetitive_key = if key_count == 0.0 {
+         0.0
+    }
+    else {
+        key_press.windows(2).filter(|pair| {
+            matches!((&pair[0].key_code, &pair[1].key_code), (Some(a), Some(b)) if a == b)
+        }).count() as f64
+    };
+
+    let repetitive_ratio = repetitive_key / key_count;
+
+    //mouse vel. cal distancebetween each mouse move event. divide 60 to find ratio
+    let mouse_move: Vec<&Input> = events.iter().filter(|event| event.event_action == "MouseMove").collect();
+
+    let mut mouse_dist = if mouse_move.len() <= 1 {
+        0.0
+    }
+    else {
+        mouse_move.windows(2).map(|pair| {
+            let dx = pair[1].mouse_x.unwrap_or(0.0) - pair[0].mouse_x.unwrap_or(0.0);
+            let dy = pair[1].mouse_y.unwrap_or(0.0) - pair[0].mouse_y.unwrap_or(0.0);
+            let dxdy = (dx*dx) + (dy*dy);
+            dxdy.sqrt()
+        }).sum::<f64>()
+    };
+
+    let mouse_velocity = mouse_dist / 60.0;
+
+    //idle ratio
+    let mut idle = if events.len() == 0 {
+        1.0
+    }
+    else {
+        let first_gap = (events[0].timestamp - window_start) as f64;
+        let first_idle = if first_gap > 2.0 {first_gap} else {0.0};
+        let last_gap = (window_end - events[events.len() - 1].timestamp) as f64;
+        let last_idle = if last_gap > 2.0 {last_gap} else { 0.0 };
+        let event_idle = events.windows(2).map(|pair| {
+            (pair[1].timestamp - pair[0].timestamp) as f64
+        }).filter(|gap| *gap > 2.0).sum::<f64>();
+        first_idle + event_idle + last_idle
+    };
+
+    let idle_ratio = (idle / 60.0).min(1.0);
+
+    let window_activity: Vec<&Input> = events.iter().filter(|event| {
+        event.event_action != "MouseMove" &&
+        event.event_action != "WheelScroll"
+    }).collect();
+
+    let window_switch = if window_activity.len() <= 1 {
+        0.0
+    }
+    else {
+        window_activity.windows(2).filter(|pair| pair[0].active_window != pair[1].active_window).count() as f64
+    };
+
+    let window_switch_ratio = window_switch / 60.0;
+
+    let feature_vector = FeatureVectors {
+        timestamp: ,
+        typing_speed,
+        repetitive_key_ratio: repetitive_ratio,
+        mouse_velocity,
+        idle_ratio,
+        window_switch_frequency: window_switch_ratio,
     }
 
-    let mut key_presses = 0;
-    let mut total_mouse_distance = 0.0;
-    let mut idle_time = 0;
-    let mut switches = 0;
-
-    let idle_threshold = 2; // seconds
-
-    let mut prev_timestamp = events[0].timestamp;
-    let mut prev_window = events[0].active_window.clone().unwrap_or_default();
-
-    for event in &events {
-        // -------------------------
-        // 1. Idle Time Calculation
-        // -------------------------
-        let gap = event.timestamp - prev_timestamp;
-        if gap > idle_threshold {
-            idle_time += gap;
-        }
-        prev_timestamp = event.timestamp;
-
-        // -------------------------
-        // 2. Keyboard Events
-        // -------------------------
-        if event.event_type == "keyboard" && event.event_action == "down" {
-            key_presses += 1;
-        }
-
-        // -------------------------
-        // 3. Mouse Movement
-        // -------------------------
-        if event.event_type == "mouse" && event.event_action == "move" {
-            let dx = event.delta_x.unwrap_or(0) as f32;
-            let dy = event.delta_y.unwrap_or(0) as f32;
-
-            let distance = (dx * dx + dy * dy).sqrt();
-            total_mouse_distance += distance;
-        }
-
-        // -------------------------
-        // 4. Window Switching
-        // -------------------------
-        if let Some(current_window) = &event.active_window {
-            if current_window != &prev_window {
-                switches += 1;
-                prev_window = current_window.clone();
-            }
-        }
-    }
-
-    let window_f32 = window_seconds as f32;
-
-    FeatureVector {
-        typing_speed: key_presses as f32 / window_f32,
-        mouse_velocity: total_mouse_distance / window_f32,
-
-        // Clamp to avoid invalid values
-        idle_ratio: (idle_time as f32 / window_f32).clamp(0.0, 1.0),
-
-        window_switch_frequency: switches as f32 / window_f32,
-    }
 }

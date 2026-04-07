@@ -11,3 +11,14 @@ pub struct Input {
     pub button: Option<String>,
     pub active_window: String,
 }
+
+#[derive(Debug)]
+pub struct FeatureVectors {
+    pub timestamp: i64,
+    pub typing_speed: f64,
+    pub repetitive_key_ratio: f64,
+    pub mouse_velocity: f64,
+    pub idle_ratio: f64,
+    pub window_switch_frequency: f64,
+}
+
