@@ -1,3 +1,5 @@
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{UNIX_EPOCH};
 use rdev::{listen, Event, EventType};
@@ -7,7 +9,11 @@ use chrono::{DateTime};
 use crate::models::input_event::Input;
 
 
-pub fn callback(event: Event, tx: Sender<Input>) {
+pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>) {
+
+    if !running.load(Ordering::Relaxed) {
+        return;
+    }
 
     let sys_time = event.time;
     let difference = sys_time.duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -15,7 +21,7 @@ pub fn callback(event: Event, tx: Sender<Input>) {
     let secs = i64::try_from(difference).unwrap();
     let dt = DateTime::from_timestamp(secs, 0).unwrap();
     let timestamp = dt.format("%Y-%m-%d %H:%M:%S");
-    println!("Timestamp: {} ", timestamp);
+
 
     let (event_type, event_action, key_code, mouse_X, mouse_Y, wheel_X, wheel_Y, button) = match event.event_type {
         EventType::KeyPress(key) => ("keyboard", "KeyPress", Some(format!("{:?}", key)), None, None, None, None, None),
@@ -33,6 +39,7 @@ pub fn callback(event: Event, tx: Sender<Input>) {
         Err(()) => String::from("Unknown window")
     };
 
+    println!("Timestamp: {}, Event: {} ", timestamp, event_action);
 
     let input = Input {
         timestamp: secs,
@@ -48,17 +55,17 @@ pub fn callback(event: Event, tx: Sender<Input>) {
     };
 
     // println!("Input: {:?}", input);
-    tx.send(input).unwrap();
+    tx.send(input);//.unwrap();
 }
 
-pub fn logging(tx: Sender<Input>){
+pub fn logging(tx: Sender<Input>, running: Arc<AtomicBool>) {
     // This will block.
     // if let Err(error) = listen(callback) {
     //     println!("Error: {:?}", error)
     // }
     
     if let Err(error) = listen(move |event| {
-        callback(event, tx.clone());
+        callback(event, tx.clone(), &running);
     }) {
         println!("Error: {:?}", error)
     }
