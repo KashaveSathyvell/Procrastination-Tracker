@@ -1,12 +1,14 @@
 use std::path::Path;
+use std::sync::Arc;
+use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 use crate::database::sqlite::{collect_events, insert_features};
 use crate::models::input_event::{FeatureVectors, Input};
 
-pub fn run_extractor(db_path: &Path) {
-    loop {
+pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>) {
+    while running.load(std::sync::atomic::Ordering::SeqCst) {
         let start_time = std::time::Instant::now();
         let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
         let window_start = window_end - 60;
