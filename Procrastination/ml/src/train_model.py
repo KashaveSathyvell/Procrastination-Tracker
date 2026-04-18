@@ -44,7 +44,7 @@ def evaluate(model, X_test, y_test):
 
 def export_onnx(model, num_features):
     initial_type = [('float_input', FloatTensorType([None, num_features]))]
-    onnx_model = convert_sklearn(model, initial_types=initial_type)
+    onnx_model = convert_sklearn(model, initial_types=initial_type, options={id(model): {"zipmap": False}})
 
     with open(MODEL_PATH, "wb") as f:
         f.write(onnx_model.SerializeToString())
@@ -60,5 +60,7 @@ if __name__ == "__main__":
 
     model = train(X_train, y_train)
     evaluate(model, X_test, y_test)
+
+    print("Feature order:", list(X_train.columns))
 
     export_onnx(model, X_train.shape[1])

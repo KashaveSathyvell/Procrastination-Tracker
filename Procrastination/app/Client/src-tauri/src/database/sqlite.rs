@@ -1,8 +1,8 @@
 // src-tauri/src/database/sqlite.rs
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
-use crate::models::input_event::{FeatureVectors, Input};
+use crate::models::models::UpdateIntervention;
+use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
 pub fn initialize_database(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
@@ -54,6 +54,22 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             dismissed INTEGER default 0,
             FOREIGN KEY(predictions_id) REFERENCES predictions(id)
         );
+
+        CREATE TABLE IF NOT EXISTS user_preferences (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            activity_name TEXT NOT NULL,
+            duration_minutes INTEGER NOT NULL,
+            last_suggested INTEGER
+        );
+
+        CREATE TABLE IF NOT EXISTS break_sessions (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            intervention_id INTEGER,
+            start_timestamp INTEGER NOT NULL,
+            end_timestamp INTEGER,
+            activity TEXT,
+            FOREIGN KEY(intervention_id) REFERENCES interventions(id)
+        );
         "
     )?;
 
@@ -75,7 +91,7 @@ pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
     Ok(())
 }
 
-pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<()> {
+pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64)> {
     let conn = Connection::open(db_path)?;
 
     conn.execute(
@@ -85,13 +101,53 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<()> 
     )?;
 
     println!("Data added into FEATURE database: {:?}", features);
+
+    let id = conn.last_insert_rowid();
+    Ok((id))
+}
+
+pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(i64)> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "INSERT INTO predictions(feature_vector_id, timestamp, predicted_state, confidence, window_size_seconds, was_corrected) \
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![predictions.feature_vectors_id ,predictions.timestamp, predictions.predicted_state, predictions.confidence, predictions.window_size_seconds, predictions.was_corrected]
+    )?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok((id))
+}
+
+pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "INSERT INTO interventions(predictions_id, timestamp, intervention_type, prediction_label, user_label, dismissed)\
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![interventions.predictions_id, interventions.timestamp, interventions.intervention_type, interventions.prediction_label, interventions.user_label, interventions.dismissed]
+    )?;
+
     Ok(())
 }
 
+pub fn update_user_label(db_path: &Path, updated: UpdateIntervention) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "UPDATE interventions\
+         SET user_label = ?1, dismissed = ?2 \
+         WHERE interventions_id=?3",
+        params![updated.user_label, updated.dismissed, updated.intervention_id]
+    )?;
+    
+    Ok(())
+}
+
+
 pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Result<Vec<Input>> {
     let conn = Connection::open(db_path)?;
-    // let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
-    // let window_start = window_end - 60;
 
     let mut stmt = conn.prepare(
         "SELECT timestamp, event_type, event_action, key_code, mouse_x, mouse_y, wheel_x, wheel_y, button, active_window FROM input_events \
