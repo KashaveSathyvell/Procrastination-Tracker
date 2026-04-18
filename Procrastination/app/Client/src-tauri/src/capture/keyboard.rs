@@ -6,7 +6,7 @@ use rdev::{listen, Event, EventType};
 use active_win_pos_rs::get_active_window;
 use chrono::{DateTime};
 
-use crate::models::input_event::Input;
+use crate::models::table_structs::Input;
 
 
 pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>) {

@@ -1,3 +1,5 @@
+use serde::Serialize;
+
 #[derive(Debug)]
 pub struct Input {
     pub timestamp: i64,
@@ -22,3 +24,23 @@ pub struct FeatureVectors {
     pub window_switch_frequency: f64,
 }
 
+#[derive(Debug)]
+pub struct Predictions {
+    pub feature_vectors_id: i64,
+    pub timestamp: i64,
+    pub predicted_state: String,
+    pub confidence: f64,
+    pub window_size_seconds: i64,
+    pub was_corrected: bool,
+}
+
+
+#[derive(Debug, Serialize, Clone)]
+pub struct Interventions {
+    pub predictions_id: i64,
+    pub timestamp: i64,
+    pub intervention_type: String,
+    pub prediction_label: String,
+    pub user_label: Option<String>,
+    pub dismissed: bool,
+}

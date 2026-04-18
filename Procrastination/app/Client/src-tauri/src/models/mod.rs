@@ -1,2 +1,2 @@
-pub mod input_event;
+pub mod table_structs;
 pub mod models;

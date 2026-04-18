@@ -5,18 +5,23 @@ use std::time::Duration;
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::Thread;
+use ort::editor::Model;
 use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::async_runtime::handle;
+use tauri::AppHandle;
 
 use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events};
+use crate::database::sqlite::{initialize_database, insert_events, update_user_label};
 use crate::features::feature_extractor::run_extractor;
 use tauri::{Manager, State};
-use crate::models::input_event::Input;
-use crate::models::models::ThreadStop;
+use tauri::WebviewUrl::App;
+use crate::models::table_structs::Input;
+use crate::models::models::{ThreadStop, ModelState, UpdateIntervention};
+
 
 #[tauri::command]
-pub fn start_collect(state: State<ThreadStop>) -> Result<(), String> {
+pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_state: State<ModelState>) -> Result<(), String> {
+    let session_clone = model_state.session.clone();
 
     let is_running = state.running_collect.swap(true, Ordering::Relaxed);
 
@@ -52,7 +57,7 @@ pub fn start_collect(state: State<ThreadStop>) -> Result<(), String> {
     });
 
     let handle3 = thread::spawn(move || {
-            run_extractor(Path::new("behavior.db"), &running_clone3);
+            run_extractor(Path::new("behavior.db"), &running_clone3, &session_clone, &app_handle);
     });
 
     Ok(())
@@ -66,4 +71,11 @@ pub fn stop_collect(state: State<ThreadStop>) -> Result<(), String> {
     println!("Stopping threads");
 
     Ok(())
+}
+
+
+#[tauri::command]
+pub fn intervention_update(updated: UpdateIntervention) {
+    println!("Intervention update");
+    update_user_label(Path::new("behavior.db"), updated).expect("TODO: panic message");
 }

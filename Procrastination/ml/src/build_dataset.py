@@ -5,7 +5,7 @@ import random
 RAW_PATH = "ml/data/raw/EVTRACKTRACK.csv"
 OUTPUT_PATH = "ml/data/processed/dataset_v1.csv"
 
-WINDOW_SIZE = 10.0  #Should I switch to 60s? Confirm with spv
+WINDOW_SIZE = 60.0  
 
 
 def load_and_clean(filepath):
@@ -105,9 +105,11 @@ def apply_labels(df):
     def label(row):
         if row['idle_ratio'] >= 0.9:
             return "Idle"
-        elif row['typing_speed'] > 1.5 and row['repetitive_key_ratio'] < 0.3:
+        elif (row['typing_speed'] > 0.5 and row['repetitive_key_ratio'] < 0.3) or \
+            (row['mouse_velocity'] > 20 and row['mouse_velocity'] < 150 and row['typing_speed'] > 0.1):
             return "Focused"
-        elif row['repetitive_key_ratio'] > 0.5 or row['mouse_velocity'] > 300:
+        elif row['repetitive_key_ratio'] > 0.3 or \
+            (row['mouse_velocity'] > 100 and row['typing_speed'] < 0.4):
             return "Procrastinating"
         else:
             return "At Risk"
@@ -128,6 +130,7 @@ if __name__ == "__main__":
     df = load_and_clean(RAW_PATH)
     features = extract_features(df)
     final = apply_labels(features)
+    print(final['label'].value_counts())
 
     final.to_csv(OUTPUT_PATH, index=False)
     print("Dataset created:", OUTPUT_PATH)

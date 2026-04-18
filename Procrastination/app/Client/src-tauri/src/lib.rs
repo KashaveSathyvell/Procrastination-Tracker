@@ -5,14 +5,16 @@ pub mod capture;
 pub mod database;
 pub mod features;
 pub mod api;
+pub mod ml;
+use ml::inference::load_model;
 
-use std::sync::Arc;
+use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 mod config;
 use config::AppConfig;
-use api::commands::{start_collect, stop_collect};
-use models::models::ThreadStop;
+use api::commands::{start_collect, stop_collect, intervention_update};
+use models::models::{ThreadStop, ModelState};
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
@@ -20,12 +22,18 @@ pub fn run() {
         .setup(|app| {
             let app_config = AppConfig::new(&app.handle());
 
+            let resource_path = app.path().resource_dir().expect("Failed to get resource path").join("resources/baseline_model.onnx");
+
+            // let database_path = app.path().resource_dir().expect("Failed to get resource path").join("db");
+
+            app.manage(ModelState {session: Arc::new(Mutex::new(load_model(resource_path)?))});
+
             app.manage(app_config);
             app.manage(ThreadStop{ running_collect: Arc::new(<AtomicBool>::new(false))});
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_collect, stop_collect])
+        .invoke_handler(tauri::generate_handler![start_collect, stop_collect, intervention_update])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
