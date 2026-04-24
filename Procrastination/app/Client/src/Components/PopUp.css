@@ -1,3 +1,4 @@
+/* PopUp.css */
 .popup-overlay {
     position: fixed;
     bottom: 2rem;
@@ -30,10 +31,20 @@
     box-shadow: none;
 }
 
-.popup-close:hover {
-    color: #fff;
-    border-color: transparent;
+.popup-close:hover { color: #fff; border-color: transparent; }
+
+.popup-back {
+    background: none;
+    border: none;
+    color: #888;
+    font-size: 12px;
+    cursor: pointer;
+    padding: 0;
+    margin-bottom: 10px;
+    box-shadow: none;
 }
+
+.popup-back:hover { color: #fff; }
 
 .popup-header {
     font-size: 11px;
@@ -47,7 +58,7 @@
     display: flex;
     align-items: center;
     gap: 8px;
-    margin-bottom: 8px;
+    margin-bottom: 12px;
 }
 
 .popup-badge {
@@ -63,6 +74,63 @@
     font-size: 12px;
     color: #888;
 }
+
+.break-suggestion {
+    background-color: #252525;
+    border: 1px solid #333;
+    border-radius: 8px;
+    padding: 10px 14px;
+    margin-bottom: 14px;
+    text-align: center;
+}
+
+.break-activity {
+    font-size: 15px;
+    font-weight: 500;
+    color: #f6f6f6;
+    margin: 0 0 4px;
+}
+
+.break-duration {
+    font-size: 12px;
+    color: #888;
+    margin: 0;
+}
+
+.popup-actions-col {
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+}
+
+.btn-take-break {
+    width: 100%;
+    font-size: 13px;
+    padding: 9px 0;
+    border-radius: 8px;
+    border: 1px solid #4ade80;
+    background-color: rgba(74, 222, 128, 0.1);
+    color: #4ade80;
+    cursor: pointer;
+    font-weight: 500;
+    box-shadow: none;
+}
+
+.btn-take-break:hover { background-color: rgba(74, 222, 128, 0.18); }
+
+.btn-wrong-state {
+    width: 100%;
+    font-size: 13px;
+    padding: 9px 0;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background-color: #2a2a2a;
+    color: #ccc;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.btn-wrong-state:hover { border-color: #666; color: #fff; }
 
 .popup-prompt {
     font-size: 13px;
@@ -89,10 +157,7 @@
     box-shadow: none;
 }
 
-.label-btn:hover {
-    border-color: #555;
-    color: #fff;
-}
+.label-btn:hover { border-color: #555; color: #fff; }
 
 .label-btn.selected {
     border: 1.5px solid #f59e0b;
@@ -118,9 +183,7 @@
     box-shadow: none;
 }
 
-.btn-confirm:hover {
-    background-color: #333;
-}
+.btn-confirm:hover { background-color: #333; }
 
 .btn-dismiss {
     flex: 1;
@@ -134,7 +197,4 @@
     box-shadow: none;
 }
 
-.btn-dismiss:hover {
-    color: #ccc;
-    border-color: #555;
-}
+.btn-dismiss:hover { color: #ccc; border-color: #555; }

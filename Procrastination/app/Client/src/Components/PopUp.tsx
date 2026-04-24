@@ -1,3 +1,4 @@
+// PopUp.tsx
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from 'react';
@@ -10,13 +11,29 @@ type InterventionPackage = {
     intervention_type: string,
     prediction_label: string,
     confidence: number,
+    suggested_activity: string,
+    suggested_duration: number,
+    preference_id: number,
+}
+
+export type BreakData = {
+    activity: string,
+    duration: number,
+    preference_id: number,
+    intervention_id: number,
+    break_session_id: number,
 }
 
 const LABELS = ["Focused", "At Risk", "Procrastinating", "Idle"];
 
-export const PopUp = () => {
+type PopUpProps = {
+    onBreakStart: (data: BreakData) => void,
+}
+
+export const PopUp = ({ onBreakStart }: PopUpProps) => {
     const [intervention, setIntervention] = useState<InterventionPackage | null>(null);
     const [isVisible, setIsVisible] = useState(false);
+    const [showCorrection, setShowCorrection] = useState(false);
     const [selectedLabel, setSelectedLabel] = useState<string>("");
 
     useEffect(() => {
@@ -24,6 +41,7 @@ export const PopUp = () => {
             const unlisten = await listen<InterventionPackage>('new_intervention', (event) => {
                 setIntervention(event.payload);
                 setSelectedLabel(event.payload.prediction_label);
+                setShowCorrection(false);
                 setIsVisible(true);
             });
             return unlisten;
@@ -33,26 +51,90 @@ export const PopUp = () => {
         return () => { unlistenFn.then(fn => fn()); };
     }, []);
 
-    const handleConfirm = async () => {
-        if (!intervention) return;
-        await invoke('respond_to_intervention', {
-            interventionId: intervention.intervention_id,
-            userLabel: selectedLabel,
-            dismissed: false,
-        });
+    const close = () => {
         setIsVisible(false);
         setIntervention(null);
+        setShowCorrection(false);
+    };
+
+    const handleTakeBreak = async () => {
+        if (!intervention) return;
+        close();
+        try {
+            await invoke('intervention_update', {
+                updatedIntervention: {
+                    interventionId: intervention.intervention_id,
+                    userLabel: intervention.prediction_label,
+                    dismissed: false,
+                    predictedLabel: intervention.prediction_label,
+                },
+            });
+            const sessionId = await invoke('break_start', {
+                interventionId: intervention.intervention_id,
+                activity: intervention.suggested_activity,
+                plannedDurationMins: intervention.suggested_duration,
+                preferenceId: intervention.preference_id,
+            });
+            onBreakStart({
+                activity: intervention.suggested_activity,
+                duration: intervention.suggested_duration,
+                preference_id: intervention.preference_id,
+                intervention_id: intervention.intervention_id,
+                break_session_id: sessionId,
+            });
+        } catch (e) {
+            console.error('start_break failed:', e);
+        }
     };
 
     const handleDismiss = async () => {
         if (!intervention) return;
-        await invoke('respond_to_intervention', {
-            interventionId: intervention.intervention_id,
-            userLabel: null,
-            dismissed: true,
-        });
-        setIsVisible(false);
-        setIntervention(null);
+        close();
+        try {
+            await invoke('intervention_update', {
+                updatedIntervention: {
+                    interventionId: intervention.intervention_id,
+                    userLabel: intervention.prediction_label,
+                    dismissed: true,
+                    predictedLabel: intervention.prediction_label,
+                },
+            });
+        } catch (e) {
+            console.error('intervention_update failed:', e);
+        }
+    };
+
+    const handleConfirmCorrection = async () => {
+        if (!intervention) return;
+        const isStillBadState = selectedLabel === "At Risk" || selectedLabel === "Procrastinating";
+        close();
+        try {
+            await invoke('intervention_update', {
+                updatedIntervention: {
+                    interventionId: intervention.intervention_id,
+                    userLabel: selectedLabel,
+                    dismissed: false,
+                    predictedLabel: intervention.prediction_label,
+                },
+            });
+            if (isStillBadState) {
+                const sessionId = await invoke('break_start', {
+                    interventionId: intervention.intervention_id,
+                    activity: intervention.suggested_activity,
+                    plannedDurationMins: intervention.suggested_duration,
+                    preferenceId: intervention.preference_id,
+                });
+                onBreakStart({
+                    activity: intervention.suggested_activity,
+                    duration: intervention.suggested_duration,
+                    preference_id: intervention.preference_id,
+                    intervention_id: intervention.intervention_id,
+                    break_session_id: sessionId,
+                });
+            }
+        } catch (e) {
+            console.error('correction failed:', e);
+        }
     };
 
     if (!isVisible || !intervention) return null;
@@ -62,31 +144,56 @@ export const PopUp = () => {
             <div className="popup-box">
                 <button className="popup-close" onClick={handleDismiss}>✕</button>
 
-                <p className="popup-header">Procrastination alert</p>
+                {!showCorrection ? (
+                    <>
+                        <p className="popup-header">Time for a break?</p>
 
-                <div className="popup-meta">
-                    <span className="popup-badge">{intervention.prediction_label}</span>
-                    <span className="popup-confidence">{(intervention.confidence * 100).toFixed(0)}% confidence</span>
-                </div>
+                        <div className="popup-meta">
+                            <span className="popup-badge">{intervention.prediction_label}</span>
+                            <span className="popup-confidence">{(intervention.confidence * 100).toFixed(0)}% confidence</span>
+                        </div>
 
-                <p className="popup-prompt">Is this accurate? Pick your current state or dismiss.</p>
+                        <div className="break-suggestion">
+                            <p className="break-activity">{intervention.suggested_activity}</p>
+                            <p className="break-duration">{intervention.suggested_duration} min</p>
+                        </div>
 
-                <div className="popup-labels">
-                    {LABELS.map(label => (
-                        <button
-                            key={label}
-                            className={`label-btn ${selectedLabel === label ? 'selected' : ''}`}
-                            onClick={() => setSelectedLabel(label)}
-                        >
-                            {label}
-                        </button>
-                    ))}
-                </div>
+                        <div className="popup-actions-col">
+                            <button className="btn-take-break" onClick={handleTakeBreak}>
+                                I'll take the break
+                            </button>
+                            <button className="btn-wrong-state" onClick={() => setShowCorrection(true)}>
+                                Wrong state
+                            </button>
+                            <button className="btn-dismiss" onClick={handleDismiss}>
+                                Dismiss
+                            </button>
+                        </div>
+                    </>
+                ) : (
+                    <>
+                        <button className="popup-back" onClick={() => setShowCorrection(false)}>← Back</button>
 
-                <div className="popup-actions">
-                    <button className="btn-confirm" onClick={handleConfirm}>Confirm</button>
-                    <button className="btn-dismiss" onClick={handleDismiss}>Dismiss</button>
-                </div>
+                        <p className="popup-header">Correct your state</p>
+
+                        <div className="popup-labels">
+                            {LABELS.map(label => (
+                                <button
+                                    key={label}
+                                    className={`label-btn ${selectedLabel === label ? 'selected' : ''}`}
+                                    onClick={() => setSelectedLabel(label)}
+                                >
+                                    {label}
+                                </button>
+                            ))}
+                        </div>
+
+                        <div className="popup-actions">
+                            <button className="btn-confirm" onClick={handleConfirmCorrection}>Confirm</button>
+                            <button className="btn-dismiss" onClick={handleDismiss}>Dismiss</button>
+                        </div>
+                    </>
+                )}
             </div>
         </div>
     );

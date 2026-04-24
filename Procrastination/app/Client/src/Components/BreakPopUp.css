@@ -1,0 +1,88 @@
+/* BreakPopUp.css */
+.break-overlay {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+}
+
+.break-box {
+    background-color: #1e1e1e;
+    color: #f6f6f6;
+    border: 1px solid #333;
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    width: 240px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+    text-align: center;
+}
+
+.break-header {
+    font-size: 11px;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: #666;
+    margin: 0 0 8px;
+}
+
+.break-activity-name {
+    font-size: 16px;
+    font-weight: 500;
+    color: #f6f6f6;
+    margin: 0 0 10px;
+}
+
+.break-timer {
+    font-size: 32px;
+    font-weight: 500;
+    color: #4ade80;
+    margin: 0 0 6px;
+    letter-spacing: 0.04em;
+}
+
+.break-hint {
+    font-size: 12px;
+    color: #555;
+    margin: 0 0 16px;
+}
+
+.break-expired-msg {
+    font-size: 13px;
+    color: #aaa;
+    margin: 0 0 14px;
+}
+
+.break-expired-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-im-back {
+    flex: 1;
+    font-size: 13px;
+    padding: 9px 0;
+    border-radius: 8px;
+    border: 1px solid #4ade80;
+    background-color: rgba(74, 222, 128, 0.1);
+    color: #4ade80;
+    cursor: pointer;
+    font-weight: 500;
+    box-shadow: none;
+    width: 100%;
+}
+
+.btn-im-back:hover { background-color: rgba(74, 222, 128, 0.18); }
+
+.btn-extend {
+    flex: 1;
+    font-size: 13px;
+    padding: 9px 0;
+    border-radius: 8px;
+    border: 1px solid #444;
+    background-color: #2a2a2a;
+    color: #aaa;
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.btn-extend:hover { color: #fff; border-color: #666; }

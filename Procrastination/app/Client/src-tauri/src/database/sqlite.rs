@@ -1,8 +1,9 @@
 // src-tauri/src/database/sqlite.rs
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
-use crate::models::models::UpdateIntervention;
-use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
+use tauri::menu::NativeIcon::User;
+use crate::models::models::{EndBreak, PreferenceUpdate, UpdateIntervention};
+use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions, UserPreferences, BreakSessions};
 pub fn initialize_database(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
@@ -58,7 +59,11 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
         CREATE TABLE IF NOT EXISTS user_preferences (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             activity_name TEXT NOT NULL,
-            duration_minutes INTEGER NOT NULL,
+            min_duration_minutes INTEGER NOT NULL,
+            max_duration_minutes INTEGER NOT NULL,
+            times_suggested INTEGER default 0,
+            times_completed INTEGER default 0,
+            average_focus_score REAL,
             last_suggested INTEGER
         );
 
@@ -67,8 +72,13 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             intervention_id INTEGER,
             start_timestamp INTEGER NOT NULL,
             end_timestamp INTEGER,
+            preference_id INTEGER,
             activity TEXT,
+            planned_duration_minutes INTEGER,
+            returned_on_time INTEGER default 0,
+            post_break_focus_score REAL,
             FOREIGN KEY(intervention_id) REFERENCES interventions(id)
+            FOREIGN KEY(preference_id) REFERENCES user_preferences(id)
         );
         "
     )?;
@@ -87,7 +97,6 @@ pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
         params![input.timestamp, input.event_type, input.event_action, input.key_code.as_deref(), input.mouse_x, input.mouse_y, input.wheel_x, input.wheel_y, input.button.as_deref(), input.active_window]
     )?;
 
-    // println!("Data added into INPUT database: {:?}", input);
     Ok(())
 }
 
@@ -120,7 +129,7 @@ pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(
     Ok((id))
 }
 
-pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<()> {
+pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<(i64)> {
     let conn = Connection::open(db_path)?;
 
     conn.execute(
@@ -129,22 +138,146 @@ pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Re
         params![interventions.predictions_id, interventions.timestamp, interventions.intervention_type, interventions.prediction_label, interventions.user_label, interventions.dismissed]
     )?;
 
-    Ok(())
+    let id = conn.last_insert_rowid();
+    Ok(id)
 }
 
-pub fn update_user_label(db_path: &Path, updated: UpdateIntervention) -> Result<()> {
+pub fn insert_user_preference(db_path: &Path, preference: &UserPreferences) -> Result<()> {
     let conn = Connection::open(db_path)?;
 
     conn.execute(
-        "UPDATE interventions\
+        "INSERT INTO user_preferences(activity_name, min_duration_minutes, max_duration_minutes, times_suggested, times_completed, average_focus_score, last_suggested) \
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![&preference.activity_name, preference.min_duration_minutes, preference.max_duration_minutes, preference.times_suggested, preference.times_completed, preference.average_focus_score, preference.last_suggested]
+    )?;
+
+    Ok(())
+}
+
+pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<(i64)> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "INSERT INTO break_sessions(intervention_id, start_timestamp, end_timestamp, preference_id, activity, planned_duration_minutes, returned_on_time, post_break_focus_score) \
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
+        params![break_sessions.intervention_id, break_sessions.start_time, break_sessions.end_time, &break_sessions.preference_id, &break_sessions.activity, break_sessions.planned_duration_mins, break_sessions.returned_on_time, break_sessions.post_break_focus_score]
+    )?;
+
+    let id = conn.last_insert_rowid();
+
+    Ok(id)
+}
+
+pub fn update_break(db_path: &Path, updated_break: EndBreak, end_time: i64) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute("UPDATE break_sessions \
+        SET returned_on_time = ?1, end_timestamp = ?2 \
+        WHERE id = ?3",
+        params![updated_break.returned_on_time, end_time, updated_break.break_session_id]
+    )?;
+
+    Ok(())
+}
+
+pub fn update_user_label(db_path: &Path, updated: &UpdateIntervention) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "UPDATE interventions \
          SET user_label = ?1, dismissed = ?2 \
-         WHERE interventions_id=?3",
+         WHERE id=?3",
         params![updated.user_label, updated.dismissed, updated.intervention_id]
+    )?;
+
+    Ok(())
+}
+
+pub fn prediction_corrected(db_path:&Path, prediction_id: i64, corrected: bool) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute("UPDATE predictions \
+    SET was_corrected = ?1 \
+    WHERE id = ?2"
+    , params![corrected, prediction_id])?;
+
+    Ok(())
+}
+
+pub fn assign_truth_label(db_path: &Path, feature_vector_id: i64, truth_label: String) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute("UPDATE feature_vectors \
+    SET truth_label = ?1 \
+    WHERE id = ?2",
+    params!(truth_label, feature_vector_id))?;
+
+    Ok(())
+}
+
+pub fn get_ids(db_path: &Path, intervention_id: i64) -> Result<(i64, i64)> {
+    let conn = Connection::open(db_path)?;
+
+    conn.query_row(
+        "SELECT predictions.id, predictions.feature_vector_id \
+        FROM interventions \
+        JOIN predictions ON interventions.predictions_id = predictions.id \
+        WHERE interventions.id = ?1",
+        params![intervention_id],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    )
+}
+
+pub fn has_preferences(db_path:&Path) -> Result<i64> {
+    let conn = Connection::open(db_path)?;
+    
+    let total: i64 = conn.query_row("SELECT COUNT(*) FROM user_preferences",
+                             params![], |row| row.get(0))?;
+    
+    Ok(total)
+}
+
+pub fn get_all_preferences(db_path: &Path) -> Result<Vec<UserPreferences>> {
+    let conn = Connection::open(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT * \
+        from user_preferences",
+    )?;
+
+    let rows = stmt.query_map(params![], |row| {
+        Ok(UserPreferences {
+            id: row.get(0)?,
+            activity_name: row.get(1)?,
+            min_duration_minutes: row.get(2)?,
+            max_duration_minutes: row.get(3)?,
+            times_suggested: row.get(4)?,
+            times_completed: row.get(5)?,
+            average_focus_score: row.get(6)?,
+            last_suggested: row.get(7)?
+        })
+    })?;
+
+    let mut preferences = Vec::new();
+    for pref in rows {
+        preferences.push(pref?);
+    }
+
+    Ok(preferences)
+}
+
+pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpdate) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+    
+    conn.execute(
+        "UPDATE user_preferences \
+        SET last_suggested = ?1, times_suggested = ?2 \
+        WHERE id = ?3",
+        params![updated_preference.last_suggested, updated_preference.times_suggested, updated_preference.preference_id],
     )?;
     
     Ok(())
 }
-
 
 pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Result<Vec<Input>> {
     let conn = Connection::open(db_path)?;
