@@ -44,3 +44,27 @@ pub struct Interventions {
     pub user_label: Option<String>,
     pub dismissed: bool,
 }
+
+#[derive(Debug, Clone)]
+pub struct UserPreferences {
+    pub id: Option<i64>,
+    pub activity_name: String,
+    pub min_duration_minutes: i64,
+    pub max_duration_minutes: i64,
+    pub times_suggested: i64,
+    pub times_completed: i64,
+    pub average_focus_score: f64,
+    pub last_suggested: i64,
+}
+
+#[derive(Debug)]
+pub struct BreakSessions {
+    pub intervention_id: i64,
+    pub start_time: i64,
+    pub end_time: i64,
+    pub preference_id: Option<i64>,
+    pub activity: String,
+    pub planned_duration_mins: i64,
+    pub returned_on_time: i64,
+    pub post_break_focus_score: f64,
+}

@@ -6,18 +6,32 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ort::session::Session;
 use tauri::{AppHandle, Emitter};
 use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions};
+use crate::intervention::jitai::suggest_activity;
 use crate::ml::inference::run_inference;
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
-use crate::models::models::PredictionPackage;
+use crate::models::models::InterventionPackage;
 
-pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle) {
+pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>) {
     let confidence_threshold = 0.75;
     let mut prediction_counter = 0;
+    let mut post_break_remaining_windows = 5;
+    let mut post_break_scores: Vec<f64> = Vec::new();
 
     thread::sleep(Duration::from_secs(60));
 
     loop {
         if !running.load(std::sync::atomic::Ordering::SeqCst) { break; }
+
+        if on_break.load(std::sync::atomic::Ordering::SeqCst) {
+            prediction_counter = 0;
+            continue;
+        }
+
+        if end_break.load(std::sync::atomic::Ordering::SeqCst) {
+            post_break_remaining_windows = 5;
+            post_break_scores.clear();
+            end_break.store(false, std::sync::atomic::Ordering::SeqCst);
+        }
 
         let start_time = std::time::Instant::now();
         let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
@@ -62,6 +76,20 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
         println!("PREDICTION: {:?} Confidence: {:?}", &prediction.predicted_state, &prediction.confidence);
 
+        if post_break_remaining_windows > 0 {
+            if prediction.predicted_state == "Focused" {
+                post_break_scores.push(confidence.clone())
+            }
+            else {
+                post_break_scores.push(0.0)
+            }
+            post_break_remaining_windows -= 1
+        }
+        else if post_break_remaining_windows == 0 {
+            let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
+        }
+
+
 
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
@@ -72,30 +100,34 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             prediction_counter = 0;
         }
 
-        if prediction_counter == 3 {
+        if prediction_counter == 1 {
             prediction_counter = 0;
             let intervention = Interventions {
                 predictions_id: prediction_id,
                 timestamp: window_end,
                 intervention_type: "PopUp".parse().unwrap(),
-                prediction_label: prediction.predicted_state,
+                prediction_label: prediction.predicted_state.clone(),
                 user_label: None,
                 dismissed: false,
             };
             
-            insert_interventions(db_path, &intervention).expect("TODO: panic message");
-            app_handle.emit("new_intervention", intervention).expect("TODO: panic message");
+            let intervention_id = insert_interventions(db_path, &intervention).expect("TODO: panic message");
+
+            let activity_suggestion = suggest_activity(db_path);
+
+            let payload = InterventionPackage {
+                intervention_id,
+                timestamp: window_end,
+                intervention_type: "PopUp".to_string(),
+                prediction_label: prediction.predicted_state,
+                confidence,
+                suggested_activity: Option::from(activity_suggestion.activity),
+                suggested_duration: Option::from(activity_suggestion.random_duration),
+                preference_id: Option::from(activity_suggestion.preference_id),
+            };
+
+            app_handle.emit("new_intervention", payload).expect("TODO: panic message");
         }
-
-
-        // let payload = PredictionPackage {
-        //     prediction_id,
-        //     feature_vector_id: feature_id,
-        //     prediction_label: prediction.predicted_state,
-        //     confidence,
-        //     timestamp: window_end,
-        // };
-        // app_handle.emit("new_prediction", payload).expect("TODO: panic message");
 
         let elapsed = start_time.elapsed();
         let sleep = Duration::from_secs(60).saturating_sub(elapsed);

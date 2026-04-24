@@ -5,15 +5,21 @@ use std::time::{UNIX_EPOCH};
 use rdev::{listen, Event, EventType};
 use active_win_pos_rs::get_active_window;
 use chrono::{DateTime};
-
+use tauri::State;
+use crate::models::models::OnBreak;
 use crate::models::table_structs::Input;
 
 
-pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>) {
+pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_break: &Arc<AtomicBool>) {
 
     if !running.load(Ordering::Relaxed) {
         return;
     }
+
+    if on_break.load(Ordering::SeqCst) {
+        return;
+    }
+
 
     let sys_time = event.time;
     let difference = sys_time.duration_since(UNIX_EPOCH).unwrap().as_secs();
@@ -58,14 +64,11 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>) {
     tx.send(input);//.unwrap();
 }
 
-pub fn logging(tx: Sender<Input>, running: Arc<AtomicBool>) {
-    // This will block.
-    // if let Err(error) = listen(callback) {
-    //     println!("Error: {:?}", error)
-    // }
+pub fn logging(tx: Sender<Input>, running: Arc<AtomicBool>, on_break: Arc<AtomicBool>) {
+    let user_break = Arc::clone(&on_break);
     
     if let Err(error) = listen(move |event| {
-        callback(event, tx.clone(), &running);
+        callback(event, tx.clone(), &running, &user_break);
     }) {
         println!("Error: {:?}", error)
     }
