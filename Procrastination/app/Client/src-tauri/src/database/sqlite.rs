@@ -63,7 +63,7 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             max_duration_minutes INTEGER NOT NULL,
             times_suggested INTEGER default 0,
             times_completed INTEGER default 0,
-            average_focus_score REAL,
+            average_focus_score REAL default 0.0,
             last_suggested INTEGER
         );
 
@@ -276,6 +276,49 @@ pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpd
         params![updated_preference.last_suggested, updated_preference.times_suggested, updated_preference.preference_id],
     )?;
     
+    Ok(())
+}
+
+pub fn update_break_focus_score(db_path: &Path, break_id: i64, score: f64) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "UPDATE break_sessions \
+        SET post_break_focus_score = ?1 \
+        WHERE id = ?2",
+        params![score, break_id],
+    )?;
+
+    Ok(())
+}
+
+pub fn update_pref_focus_score(db_path: &Path, break_session_id: i64, new_score: f64) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    let preference_id: i64 = conn.query_row(
+        "SELECT preference_id FROM break_sessions \
+        WHERE id = ?1",
+        params![break_session_id],
+        |row| row.get(0)
+    )?;
+
+    let (average_score, times_completed): (f64, i64) = conn.query_row(
+        "SELECT average_focus_score, times_completed \
+        FROM user_preferences \
+        WHERE id = ?1",
+        params![preference_id],
+        |row| Ok((row.get(0)?, row.get(1)?))
+    )?;
+
+    let new_average_score = (average_score * times_completed as f64 + new_score) / (times_completed + 1) as f64;
+    
+    conn.execute(
+        "UPDATE user_preferences \
+        SET average_focus_score = ?1, times_completed = ?2 \
+        WHERE id = ?3",
+        params![new_average_score, times_completed+1, preference_id],
+    )?;
+
     Ok(())
 }
 
