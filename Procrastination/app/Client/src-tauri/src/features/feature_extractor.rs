@@ -5,16 +5,16 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ort::session::Session;
 use tauri::{AppHandle, Emitter};
-use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions};
+use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions, update_break_focus_score, update_pref_focus_score};
 use crate::intervention::jitai::suggest_activity;
 use crate::ml::inference::run_inference;
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
 use crate::models::models::InterventionPackage;
 
-pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>) {
+pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>, break_id: &Arc<Mutex<Option<i64>>>) {
     let confidence_threshold = 0.75;
     let mut prediction_counter = 0;
-    let mut post_break_remaining_windows = 5;
+    let mut post_break_remaining_windows = 0;
     let mut post_break_scores: Vec<f64> = Vec::new();
 
     thread::sleep(Duration::from_secs(60));
@@ -85,11 +85,18 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
             post_break_remaining_windows -= 1
         }
-        else if post_break_remaining_windows == 0 {
+        else if post_break_remaining_windows == 0 && !post_break_scores.is_empty() {
             let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
+            let break_session_id = break_id.lock().unwrap();
+            let break_sess_id = break_session_id.unwrap();
+            update_break_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
+
+            update_pref_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
+
+            post_break_scores.clear();
         }
 
-
+        
 
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 

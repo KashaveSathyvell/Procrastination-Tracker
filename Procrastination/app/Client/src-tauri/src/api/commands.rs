@@ -49,7 +49,8 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
     let db_path2 = config.paths.database_path.clone();
     let user_break1 = on_break.on_break.clone();
     let user_break2 = on_break.on_break.clone();
-    let break_end = on_break.on_break.clone();
+    let break_end = on_break.break_ended.clone();
+    let break_id = on_break.break_id.clone();
 
 
     println!("Collecting data");
@@ -78,7 +79,7 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
 
 
     let handle3 = thread::spawn(move || {
-            run_extractor(&db_path2, &running_clone3, &session_clone, &app_handle, &user_break2, &break_end);
+            run_extractor(&db_path2, &running_clone3, &session_clone, &app_handle, &user_break2, &break_end, &break_id);
     });
 
     {
