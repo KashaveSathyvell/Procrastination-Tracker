@@ -2,7 +2,6 @@
 import { listen } from "@tauri-apps/api/event";
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from 'react';
-import React from 'react';
 import './PopUp.css';
 
 type InterventionPackage = {
@@ -63,13 +62,14 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
+                    timestamp: intervention.timestamp,
                     interventionId: intervention.intervention_id,
                     userLabel: intervention.prediction_label,
                     dismissed: false,
                     predictedLabel: intervention.prediction_label,
                 },
             });
-            const sessionId = await invoke('break_start', {
+            const sessionId = await invoke<number>('break_start', {
                 interventionId: intervention.intervention_id,
                 activity: intervention.suggested_activity,
                 plannedDurationMins: intervention.suggested_duration,
@@ -93,6 +93,7 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
+                    timestamp: intervention.timestamp,
                     interventionId: intervention.intervention_id,
                     userLabel: intervention.prediction_label,
                     dismissed: true,
@@ -111,6 +112,7 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
+                    timestamp: intervention.timestamp,
                     interventionId: intervention.intervention_id,
                     userLabel: selectedLabel,
                     dismissed: false,
@@ -118,7 +120,7 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
                 },
             });
             if (isStillBadState) {
-                const sessionId = await invoke('break_start', {
+                const sessionId = await invoke<number>('break_start', {
                     interventionId: intervention.intervention_id,
                     activity: intervention.suggested_activity,
                     plannedDurationMins: intervention.suggested_duration,

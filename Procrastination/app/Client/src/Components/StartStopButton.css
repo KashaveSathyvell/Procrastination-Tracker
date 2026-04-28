@@ -1,21 +1,27 @@
-button {
+.button_container button {
   border-radius: 8px;
-  border: 1px solid transparent;
+  border: 1px solid var(--border);
   padding: 0.6em 1.2em;
   font-size: 1em;
   font-weight: 500;
   font-family: inherit;
-  color: #fb00d5;
-  background-color: #333333;
-  transition: border-color 0.25s;
-  box-shadow: 0 2px 2px rgba(0, 0, 0, 0.2);
-  width: 200px;
-  height: 60px;
+  color: var(--text-primary);
+  background-color: var(--bg-elevated);
+  transition: border-color 150ms ease, background-color 150ms ease;
+  width: 160px;
+  height: 48px;
+  cursor: pointer;
+}
+
+.button_container button:hover {
+  border-color: var(--accent);
+  background-color: color-mix(in srgb, var(--accent) 12%, var(--bg-elevated));
 }
 
 .button_container {
     display: flex;
-    gap: 20px;
+    gap: 16px;
     justify-content: center;
     align-items: center;
+    flex-wrap: wrap;
 }

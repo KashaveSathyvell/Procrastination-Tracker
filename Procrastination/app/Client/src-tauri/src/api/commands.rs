@@ -13,26 +13,18 @@ use tauri::async_runtime::handle;
 use tauri::AppHandle;
 
 use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break};
+use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before};
 use crate::features::feature_extractor::run_extractor;
 use tauri::{Manager, State};
 use tauri::WebviewUrl::App;
 use crate::config::AppConfig;
 use crate::models::table_structs::{BreakSessions, Input, UserPreferences};
-use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak};
+use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage};
 use crate::intervention::activity::break_activities;
 
 
 #[tauri::command]
 pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_state: State<ModelState>, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<(), String> {
-    {
-        let mut handles = state.handles.lock().unwrap();
-        if let Some(old_handles) = handles.take() {
-            for handle in old_handles {
-                let _ = handle.join();
-            }
-        }
-    }
 
     let session_clone = model_state.session.clone();
 
@@ -92,11 +84,15 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
 
 
 #[tauri::command]
-pub fn stop_collect(state: State<ThreadStop>) -> Result<(), String> {
-
+pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Result<(), String> {
     state.running_collect.store(false, Ordering::Relaxed);
-    println!("Stopping threads");
+    on_break.on_break.store(false, Ordering::SeqCst);
+    on_break.break_ended.store(false, Ordering::SeqCst);
 
+    let mut break_id = on_break.break_id.lock().unwrap();
+    *break_id = None;
+    
+    println!("Stopping threads");
     Ok(())
 }
 
@@ -104,6 +100,14 @@ pub fn stop_collect(state: State<ThreadStop>) -> Result<(), String> {
 #[tauri::command]
 pub fn intervention_update(updated_intervention: UpdateIntervention, config: State<AppConfig>) -> Result<(), String>  {
     let db_path = &config.paths.database_path;
+    let overwrite = updated_intervention.user_label != updated_intervention.predicted_label;
+
+    let updated_truth_label = IdleFocusedPackage {
+        timestamp: updated_intervention.timestamp,
+        streak_windows: 3,
+        label: updated_intervention.user_label.clone(),
+        overwrite,
+    };
 
     println!("Intervention update: {:?}", updated_intervention);
     update_user_label(db_path, &updated_intervention).expect("TODO: panic message");
@@ -117,8 +121,8 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
         if (updated_intervention.user_label != updated_intervention.predicted_label) {
             prediction_corrected(db_path, predictions_id, true).expect("TODO: panic message");
         }
-
-        assign_truth_label(db_path, feature_vector_id, updated_intervention.user_label.clone()).expect("TODO: panic message");
+        update_n_windows_before(db_path, updated_truth_label).expect("TODO: panic message");
+        // assign_truth_label(db_path, feature_vector_id, updated_intervention.user_label.clone()).expect("TODO: panic message");
     }
     
     // if updated_intervention.dismissed == false {
@@ -155,6 +159,7 @@ pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins
 #[tauri::command]
 pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<AppConfig>) -> Result<(), String> {
     on_break.on_break.store(false, Ordering::SeqCst);
+    on_break.break_ended.store(true, Ordering::SeqCst);
     let end_time = Utc::now().timestamp();
 
     println!("Break ended: session {}, on time: {}", end_break.break_session_id, end_break.returned_on_time);
@@ -192,6 +197,14 @@ pub fn save_user_activity(config: State<AppConfig>, chosen_list: Vec<String>) ->
             insert_user_preference(&config.paths.database_path, activity).map_err(|err| err.to_string())?;
         };
     };
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn update_label_streak(config: State<AppConfig>, state_confirmation: IdleFocusedPackage) -> Result<(), String> {
+
+    update_n_windows_before(&config.paths.database_path, state_confirmation).map_err(|err| err.to_string())?;
 
     Ok(())
 }

@@ -1,0 +1,125 @@
+.focus-popup-overlay {
+    position: fixed;
+    bottom: 2rem;
+    right: 2rem;
+    z-index: 1000;
+}
+
+.focus-popup-box {
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    padding: 1.25rem 1.5rem;
+    width: 280px;
+    position: relative;
+}
+
+.focus-popup-header {
+    font-size: 11px;
+    color: var(--success);
+    margin: 0 0 8px;
+}
+
+.focus-popup-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 10px;
+}
+
+.focus-popup-badge {
+    font-size: 13px;
+    font-weight: 500;
+    padding: 3px 10px;
+    border-radius: 6px;
+    background-color: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+}
+
+.focus-popup-duration {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.focus-popup-message {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 14px;
+    line-height: 1.5;
+}
+
+.focus-popup-correction-prompt {
+    font-size: 13px;
+    color: var(--text-secondary);
+    margin: 0 0 10px;
+}
+
+.focus-popup-labels {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.focus-popup-labels .label-btn {
+    font-size: 13px;
+    padding: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: border-color 0.15s, background-color 0.15s, color 0.15s;
+    box-shadow: none;
+}
+
+.focus-popup-labels .label-btn:hover {
+    border-color: var(--accent);
+    color: var(--text-primary);
+}
+
+.focus-popup-labels .label-btn.selected {
+    border: 1.5px solid var(--success);
+    background-color: color-mix(in srgb, var(--success) 15%, transparent);
+    color: var(--success);
+}
+
+.focus-popup-actions {
+    display: flex;
+    gap: 8px;
+}
+
+.btn-thanks {
+    flex: 1;
+    font-size: 13px;
+    padding: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--success);
+    background-color: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
+    cursor: pointer;
+    font-weight: 500;
+    box-shadow: none;
+}
+
+.btn-thanks:hover {
+    background-color: color-mix(in srgb, var(--success) 22%, transparent);
+}
+
+.btn-actually {
+    flex: 1;
+    font-size: 13px;
+    padding: 8px 0;
+    border-radius: 8px;
+    border: 1px solid var(--border);
+    background-color: transparent;
+    color: var(--text-secondary);
+    cursor: pointer;
+    box-shadow: none;
+}
+
+.btn-actually:hover {
+    color: var(--text-primary);
+    border-color: var(--accent);
+}

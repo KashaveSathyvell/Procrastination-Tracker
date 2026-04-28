@@ -7,13 +7,12 @@
 }
 
 .popup-box {
-    background-color: #1e1e1e;
-    color: #f6f6f6;
-    border: 1px solid #333;
+    background-color: var(--bg-surface);
+    color: var(--text-primary);
+    border: 1px solid var(--border);
     border-radius: 12px;
     padding: 1.25rem 1.5rem;
     width: 280px;
-    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
     position: relative;
 }
 
@@ -23,7 +22,7 @@
     right: 0.75rem;
     background: none;
     border: none;
-    color: #666;
+    color: var(--text-muted);
     font-size: 14px;
     cursor: pointer;
     padding: 2px 6px;
@@ -31,12 +30,12 @@
     box-shadow: none;
 }
 
-.popup-close:hover { color: #fff; border-color: transparent; }
+.popup-close:hover { color: var(--text-primary); border-color: transparent; }
 
 .popup-back {
     background: none;
     border: none;
-    color: #888;
+    color: var(--text-secondary);
     font-size: 12px;
     cursor: pointer;
     padding: 0;
@@ -44,13 +43,11 @@
     box-shadow: none;
 }
 
-.popup-back:hover { color: #fff; }
+.popup-back:hover { color: var(--text-primary); }
 
 .popup-header {
     font-size: 11px;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: #666;
+    color: var(--text-muted);
     margin: 0 0 8px;
 }
 
@@ -66,18 +63,18 @@
     font-weight: 500;
     padding: 3px 10px;
     border-radius: 6px;
-    background-color: rgba(234, 179, 8, 0.15);
-    color: #f59e0b;
+    background-color: color-mix(in srgb, var(--warning) 15%, transparent);
+    color: var(--warning);
 }
 
 .popup-confidence {
     font-size: 12px;
-    color: #888;
+    color: var(--text-secondary);
 }
 
 .break-suggestion {
-    background-color: #252525;
-    border: 1px solid #333;
+    background-color: var(--bg-elevated);
+    border: 1px solid var(--border);
     border-radius: 8px;
     padding: 10px 14px;
     margin-bottom: 14px;
@@ -87,13 +84,13 @@
 .break-activity {
     font-size: 15px;
     font-weight: 500;
-    color: #f6f6f6;
+    color: var(--text-primary);
     margin: 0 0 4px;
 }
 
 .break-duration {
     font-size: 12px;
-    color: #888;
+    color: var(--text-secondary);
     margin: 0;
 }
 
@@ -108,33 +105,33 @@
     font-size: 13px;
     padding: 9px 0;
     border-radius: 8px;
-    border: 1px solid #4ade80;
-    background-color: rgba(74, 222, 128, 0.1);
-    color: #4ade80;
+    border: 1px solid var(--success);
+    background-color: color-mix(in srgb, var(--success) 12%, transparent);
+    color: var(--success);
     cursor: pointer;
     font-weight: 500;
     box-shadow: none;
 }
 
-.btn-take-break:hover { background-color: rgba(74, 222, 128, 0.18); }
+.btn-take-break:hover { background-color: color-mix(in srgb, var(--success) 20%, transparent); }
 
 .btn-wrong-state {
     width: 100%;
     font-size: 13px;
     padding: 9px 0;
     border-radius: 8px;
-    border: 1px solid #444;
-    background-color: #2a2a2a;
-    color: #ccc;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
     cursor: pointer;
     box-shadow: none;
 }
 
-.btn-wrong-state:hover { border-color: #666; color: #fff; }
+.btn-wrong-state:hover { border-color: var(--accent); color: var(--text-primary); }
 
 .popup-prompt {
     font-size: 13px;
-    color: #aaa;
+    color: var(--text-secondary);
     margin: 0 0 14px;
 }
 
@@ -149,20 +146,20 @@
     font-size: 13px;
     padding: 8px 0;
     border-radius: 8px;
-    border: 1px solid #333;
-    background-color: #2a2a2a;
-    color: #ccc;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-secondary);
     cursor: pointer;
     transition: border-color 0.15s, background-color 0.15s, color 0.15s;
     box-shadow: none;
 }
 
-.label-btn:hover { border-color: #555; color: #fff; }
+.label-btn:hover { border-color: var(--accent); color: var(--text-primary); }
 
 .label-btn.selected {
-    border: 1.5px solid #f59e0b;
-    background-color: rgba(234, 179, 8, 0.12);
-    color: #f59e0b;
+    border: 1.5px solid var(--warning);
+    background-color: color-mix(in srgb, var(--warning) 15%, transparent);
+    color: var(--warning);
 }
 
 .popup-actions {
@@ -175,26 +172,26 @@
     font-size: 13px;
     padding: 8px 0;
     border-radius: 8px;
-    border: 1px solid #555;
-    background-color: #2a2a2a;
-    color: #f6f6f6;
+    border: 1px solid var(--border);
+    background-color: var(--bg-elevated);
+    color: var(--text-primary);
     cursor: pointer;
     font-weight: 500;
     box-shadow: none;
 }
 
-.btn-confirm:hover { background-color: #333; }
+.btn-confirm:hover { border-color: var(--accent); }
 
 .btn-dismiss {
     flex: 1;
     font-size: 13px;
     padding: 8px 0;
     border-radius: 8px;
-    border: 1px solid #333;
+    border: 1px solid var(--border);
     background-color: transparent;
-    color: #888;
+    color: var(--text-secondary);
     cursor: pointer;
     box-shadow: none;
 }
 
-.btn-dismiss:hover { color: #ccc; border-color: #555; }
+.btn-dismiss:hover { color: var(--text-primary); border-color: var(--accent); }
