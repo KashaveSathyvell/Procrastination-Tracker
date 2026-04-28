@@ -1,7 +1,6 @@
 // BreakPopUp.tsx
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from 'react';
-import React from 'react';
 import { BreakData } from './PopUp';
 import './BreakPopUp.css';
 

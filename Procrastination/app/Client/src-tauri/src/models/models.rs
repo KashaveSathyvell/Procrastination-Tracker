@@ -46,6 +46,7 @@ pub struct InterventionPackage {
 #[derive(Debug, Serialize, Deserialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct UpdateIntervention {
+    pub timestamp: i64,
     pub intervention_id: i64,
     pub user_label: String,
     pub dismissed: bool,
@@ -72,4 +73,13 @@ pub struct PreferenceUpdate {
 pub struct EndBreak {
     pub break_session_id: i64,
     pub returned_on_time: bool,
+}
+
+#[derive(Deserialize, Serialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct IdleFocusedPackage {
+    pub timestamp: i64,
+    pub streak_windows: i32,
+    pub label: String,
+    pub overwrite: bool,
 }

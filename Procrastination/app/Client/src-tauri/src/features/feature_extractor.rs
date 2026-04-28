@@ -9,11 +9,14 @@ use crate::database::sqlite::{collect_events, insert_features, insert_prediction
 use crate::intervention::jitai::suggest_activity;
 use crate::ml::inference::run_inference;
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
-use crate::models::models::InterventionPackage;
+use crate::models::models::{IdleFocusedPackage, InterventionPackage, PredictionPackage};
 
 pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>, break_id: &Arc<Mutex<Option<i64>>>) {
     let confidence_threshold = 0.75;
     let mut prediction_counter = 0;
+    let mut focused_counter = 0;
+    let mut idle_counter = 0;
+
     let mut post_break_remaining_windows = 0;
     let mut post_break_scores: Vec<f64> = Vec::new();
 
@@ -74,7 +77,17 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
         let prediction_id = insert_predictions(db_path, &prediction).expect("TODO: panic message");
 
+        //for dashbaord live prediction view
         println!("PREDICTION: {:?} Confidence: {:?}", &prediction.predicted_state, &prediction.confidence);
+        let prediction_payload = PredictionPackage {
+            prediction_id,
+            feature_vector_id: feature_id,
+            prediction_label: prediction.predicted_state.clone(),
+            confidence,
+            timestamp: window_end * 1000,
+        };
+        app_handle.emit("new_prediction", prediction_payload).expect("TODO: panic message");
+
 
         if post_break_remaining_windows > 0 {
             if prediction.predicted_state == "Focused" {
@@ -87,27 +100,44 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         }
         else if post_break_remaining_windows == 0 && !post_break_scores.is_empty() {
             let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
-            let break_session_id = break_id.lock().unwrap();
-            let break_sess_id = break_session_id.unwrap();
-            update_break_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
 
-            update_pref_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
+            let break_session_id = break_id.lock().unwrap();
+            if let Some(break_sess_id) = *break_session_id {
+                update_break_focus_score(&db_path, break_sess_id, post_break_average)
+                    .expect("TODO: panic message");
+                update_pref_focus_score(&db_path, break_sess_id, post_break_average)
+                    .expect("TODO: panic message");
+            }
 
             post_break_scores.clear();
         }
 
-        
-
+        //Logic for intervention popups
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
         if intervention_confidence && (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
             prediction_counter += 1;
+            focused_counter = 0;
+            idle_counter = 0;
+        }
+        else if intervention_confidence && &prediction.predicted_state == "Focused" {
+            focused_counter += 1;
+            prediction_counter = 0;
+            idle_counter = 0;
+        }
+        else if intervention_confidence && &prediction.predicted_state == "Idle" {
+            idle_counter += 1;
+            focused_counter = 0;
+            prediction_counter = 0;
         }
         else {
             prediction_counter = 0;
+            focused_counter = 0;
+            idle_counter = 0;
         }
 
-        if prediction_counter == 1 {
+
+        if prediction_counter == 3 {
             prediction_counter = 0;
             let intervention = Interventions {
                 predictions_id: prediction_id,
@@ -135,6 +165,33 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
             app_handle.emit("new_intervention", payload).expect("TODO: panic message");
         }
+        else if focused_counter == 15 {
+
+            let focused_payload = IdleFocusedPackage {
+                timestamp: window_end,
+                streak_windows: focused_counter,
+                label: "Focused".to_string(),
+                overwrite: false,
+            };
+
+            focused_counter = 0;
+            app_handle.emit("focus_check", focused_payload).expect("TODO: panic message");
+
+        }
+        else if idle_counter == 10 {
+
+            let idle_payload = IdleFocusedPackage {
+                timestamp: window_end,
+                streak_windows: idle_counter,
+                label: "Idle".to_string(),
+                overwrite: false,
+            };
+
+            idle_counter = 0;
+            app_handle.emit("idle_check", idle_payload).expect("TODO: panic message");
+            
+        }
+
 
         let elapsed = start_time.elapsed();
         let sleep = Duration::from_secs(60).saturating_sub(elapsed);

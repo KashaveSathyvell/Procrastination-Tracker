@@ -2,8 +2,11 @@
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
 use tauri::menu::NativeIcon::User;
-use crate::models::models::{EndBreak, PreferenceUpdate, UpdateIntervention};
+use crate::models::models::{EndBreak, IdleFocusedPackage, PreferenceUpdate, UpdateIntervention};
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions, UserPreferences, BreakSessions};
+
+
+
 pub fn initialize_database(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
 
@@ -353,4 +356,23 @@ pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Res
     }
 
     Ok(features)
+}
+
+pub fn update_n_windows_before(db_path: &Path, update_package: IdleFocusedPackage) -> Result<()> {
+    let conn = Connection::open(db_path)?;
+
+    conn.execute(
+        "UPDATE feature_vectors \
+        SET truth_label = ?1 \
+        WHERE id IN ( \
+            SELECT id FROM feature_vectors \
+            WHERE timestamp <= ?2 \
+            AND (truth_label IS NULL OR ?3 = 1) \
+            ORDER BY timestamp DESC \
+            LIMIT ?4\
+        )",
+        params![update_package.label, update_package.timestamp, update_package.overwrite, update_package.streak_windows as i64]
+    )?;
+
+    Ok(())
 }

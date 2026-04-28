@@ -16,7 +16,7 @@ use std::sync::atomic::AtomicBool;
 use tauri::Manager;
 mod config;
 use config::AppConfig;
-use api::commands::{start_collect, stop_collect, intervention_update, break_start, break_end, preference_exist, get_preference, save_user_activity};
+use api::commands::{start_collect, stop_collect, intervention_update, break_start, break_end, preference_exist, get_preference, save_user_activity, update_label_streak};
 use models::models::{ThreadStop, ModelState, OnBreak};
 use crate::database::sqlite::initialize_database;
 
@@ -39,7 +39,7 @@ pub fn run() {
             Ok(())
         })
         .plugin(tauri_plugin_opener::init())
-        .invoke_handler(tauri::generate_handler![start_collect, stop_collect, intervention_update, break_start, break_end, preference_exist, get_preference, save_user_activity])
+        .invoke_handler(tauri::generate_handler![start_collect, stop_collect, intervention_update, break_start, break_end, preference_exist, get_preference, save_user_activity, update_label_streak])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

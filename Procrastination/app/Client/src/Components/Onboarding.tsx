@@ -1,6 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from "react";
-import React from "react";
 import "./Onboarding.css";
 
 type OnboardingProps = {
@@ -16,6 +15,23 @@ const ACTIVITY_ICONS: Record<string, string> = {
     Reading: "📖",
     Meditation: "🧘",
     Stretching: "🤸",
+    Crochet: "🧶",
+    "Snack break": "🍎",
+    Youtube: "▶️",
+    "Scrolling reels": "📱",
+};
+
+const ACTIVITY_DURATIONS: Record<string, string> = {
+    Walking: "5-10 mins",
+    "Light Exercise": "10-20 mins",
+    Gaming: "10-25 mins",
+    Reading: "10-20 mins",
+    Meditation: "5-10 mins",
+    Stretching: "5-10 mins",
+    Crochet: "15-20 mins",
+    "Snack break": "5-10 mins",
+    Youtube: "10-15 mins",
+    "Scrolling reels": "5-10 mins",
 };
 
 export const Onboarding = ({ onComplete }: OnboardingProps) => {
@@ -82,11 +98,12 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
         <div className="ob-root">
             <div className="ob-card">
                 <div className="ob-header">
-                    <span className="ob-eyebrow">Setup</span>
-                    <h1 className="ob-title">Pick your break activities</h1>
+                    <span className="ob-eyebrow">Welcome</span>
+                    <h1 className="ob-title">Welcome to FocusGuard</h1>
                     <p className="ob-sub">
-                        We'll suggest these when you need to step away. Choose as many as you like.
+                        We track your work pattern and suggest timely interventions to keep your focus steady.
                     </p>
+                    <h2 className="ob-section-title">Choose your break activities</h2>
                 </div>
 
                 {error && <p className="ob-error">{error}</p>}
@@ -104,6 +121,9 @@ export const Onboarding = ({ onComplete }: OnboardingProps) => {
                                     {ACTIVITY_ICONS[activity] ?? "•"}
                                 </span>
                                 <span className="ob-activity-name">{activity}</span>
+                                <span className="ob-activity-duration">
+                                    {ACTIVITY_DURATIONS[activity] ?? "5-15 mins"}
+                                </span>
                                 {isSelected && <span className="ob-check">✓</span>}
                             </button>
                         );
