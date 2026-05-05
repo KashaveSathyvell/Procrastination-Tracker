@@ -15,6 +15,19 @@
         "title": "client",
         "width": 800,
         "height": 600
+      },
+      {
+        "label": "popup",
+        "url": "popup.html",
+        "width": 360,
+        "height": 480,
+        "transparent": true,
+        "visible": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "skipTaskbar": true,
+        "resizable": false,
+        "center": false
       }
     ],
     "security": {

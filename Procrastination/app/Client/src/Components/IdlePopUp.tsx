@@ -53,6 +53,13 @@ export const IdlePopUp = () => {
         } catch (e) {
             console.error('update_label_streak failed:', e);
         }
+        try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            await win.hide();
+        } catch (e) {
+            console.error("Failed to hide popup window:", e);
+        }
     };
 
     const handleDismiss = async () => {
@@ -70,6 +77,13 @@ export const IdlePopUp = () => {
             });
         } catch (e) {
             console.error('update_label_streak failed:', e);
+        }
+        try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            await win.hide();
+        } catch (e) {
+            console.error("Failed to hide popup window:", e);
         }
     };
 

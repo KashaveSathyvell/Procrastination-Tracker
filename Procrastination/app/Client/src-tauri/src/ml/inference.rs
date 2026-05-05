@@ -23,6 +23,16 @@ pub fn run_inference(session: &mut Session, features: &FeatureVectors) -> Result
                                                  features.mouse_velocity as f32,
                                                  features.idle_ratio as f32]).unwrap();
 
+    // USE THIS AFTER RETRAINING IS DONE!!!
+    // let input_data = Array2::from_shape_vec((1, 5),
+    //                                         vec![
+    //                                             features.typing_speed as f32,
+    //                                             features.repetitive_key_ratio as f32,
+    //                                             features.mouse_velocity as f32,
+    //                                             features.idle_ratio as f32,
+    //                                             features.window_switch_frequency as f32,
+    //                                         ]).unwrap();
+
     let outputs = session.run(ort::inputs!["float_input" => TensorRef::from_array_view(input_data.view())?])?;
 
     // Step 3 - extract predicted label integer

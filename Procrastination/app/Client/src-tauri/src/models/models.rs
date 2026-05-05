@@ -61,6 +61,14 @@ pub struct ActivitySuggestion {
     pub random_duration: i64,
 }
 
+#[derive(Debug, Serialize, Clone)]
+pub struct ActivityScore {
+    pub activity_name: String,
+    pub average_focus_score: f64,
+    pub times_completed: i64,
+    pub times_suggested: i64,
+}
+
 #[derive(Debug)]
 pub struct PreferenceUpdate {
     pub preference_id: i64,
@@ -82,4 +90,50 @@ pub struct IdleFocusedPackage {
     pub streak_windows: i32,
     pub label: String,
     pub overwrite: bool,
+}
+
+
+#[derive(Debug, Serialize)]
+pub struct RetrainingStats {
+    pub correction_rate: f64,
+    pub labelled_count: i64,
+    pub retraining_needed: bool,
+}
+
+#[derive(Debug, Serialize)]
+pub struct RetrainingResult {
+    pub success: bool,
+    pub message: String,
+}
+
+
+//analytics n history
+#[derive(Debug, Serialize, Clone)]
+pub struct StateDistribution {
+    pub focused: f64,
+    pub at_risk: f64,
+    pub procrastinating: f64,
+    pub idle: f64,
+    pub focused_count: i64,
+    pub at_risk_count: i64,
+    pub procrastinating_count: i64,
+    pub idle_count: i64,
+    pub total: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct FocusScore {
+    pub score: f64,           // 0-100
+    pub average_confidence: f64,
+    pub focused_percentage: f64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct PredictionHistoryRow {
+    pub prediction_id: i64,
+    pub timestamp: i64,
+    pub predicted_state: String,
+    pub confidence: f64,
+    pub was_corrected: bool,
+    pub user_label: Option<String>,
 }

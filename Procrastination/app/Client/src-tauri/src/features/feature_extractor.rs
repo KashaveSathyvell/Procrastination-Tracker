@@ -4,7 +4,7 @@ use std::sync::atomic::AtomicBool;
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ort::session::Session;
-use tauri::{AppHandle, Emitter};
+use tauri::{AppHandle, Emitter, Manager};
 use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions, update_break_focus_score, update_pref_focus_score};
 use crate::intervention::jitai::suggest_activity;
 use crate::ml::inference::run_inference;
@@ -163,6 +163,20 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 preference_id: Option::from(activity_suggestion.preference_id),
             };
 
+            if let Some(popup_window) = app_handle.get_webview_window("popup") {
+                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
+                    let screen_size = monitor.size();
+                    let scale = monitor.scale_factor();
+                    let popup_w = (360.0 * scale) as i32;
+                    let popup_h = (480.0 * scale) as i32;
+                    let margin = (16.0 * scale) as i32;
+                    let x = (screen_size.width as i32) - popup_w - margin;
+                    let y = (screen_size.height as i32) - popup_h - margin;
+                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
+                }
+                let _ = popup_window.show();
+                let _ = popup_window.set_focus();
+            }
             app_handle.emit("new_intervention", payload).expect("TODO: panic message");
         }
         else if focused_counter == 15 {
@@ -175,6 +189,20 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             };
 
             focused_counter = 0;
+            if let Some(popup_window) = app_handle.get_webview_window("popup") {
+                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
+                    let screen_size = monitor.size();
+                    let scale = monitor.scale_factor();
+                    let popup_w = (360.0 * scale) as i32;
+                    let popup_h = (480.0 * scale) as i32;
+                    let margin = (16.0 * scale) as i32;
+                    let x = (screen_size.width as i32) - popup_w - margin;
+                    let y = (screen_size.height as i32) - popup_h - margin;
+                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
+                }
+                let _ = popup_window.show();
+                let _ = popup_window.set_focus();
+            }
             app_handle.emit("focus_check", focused_payload).expect("TODO: panic message");
 
         }
@@ -188,6 +216,20 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             };
 
             idle_counter = 0;
+            if let Some(popup_window) = app_handle.get_webview_window("popup") {
+                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
+                    let screen_size = monitor.size();
+                    let scale = monitor.scale_factor();
+                    let popup_w = (360.0 * scale) as i32;
+                    let popup_h = (480.0 * scale) as i32;
+                    let margin = (16.0 * scale) as i32;
+                    let x = (screen_size.width as i32) - popup_w - margin;
+                    let y = (screen_size.height as i32) - popup_h - margin;
+                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
+                }
+                let _ = popup_window.show();
+                let _ = popup_window.set_focus();
+            }
             app_handle.emit("idle_check", idle_payload).expect("TODO: panic message");
             
         }

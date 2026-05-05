@@ -40,12 +40,15 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         _ => ("Unknown", "Unknown", None, None, None, None, None, None)
     };
 
-    let activeWindow = match get_active_window() {
-        Ok(active_window) => active_window.app_name,
-        Err(()) => String::from("Unknown window")
+    let activeWindow = if event_action == "MouseMove" || event_action == "WheelScroll" {
+        String::from("") 
+    } else {
+        match get_active_window() {
+            Ok(active_window) => active_window.app_name,
+            Err(()) => String::from("Unknown window")
+        }
     };
 
-    println!("Timestamp: {}, Event: {} ", timestamp, event_action);
 
     let input = Input {
         timestamp: secs,
@@ -60,7 +63,6 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         active_window: activeWindow,
     };
 
-    // println!("Input: {:?}", input);
     tx.send(input);//.unwrap();
 }
 

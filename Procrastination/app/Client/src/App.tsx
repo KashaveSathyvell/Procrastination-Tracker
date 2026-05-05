@@ -1,12 +1,8 @@
-import { useState, useEffect } from "react";
+import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import "./App.css";
 import { Sidebar } from "./Components/Sidebar";
-import { PopUp, BreakData } from "./Components/PopUp";
-import { BreakPopUp } from "./Components/BreakPopUp";
 import { Onboarding } from "./Components/Onboarding";
-import { FocusPopUp } from "./Components/FocusPopUp";
-import { IdlePopUp } from "./Components/IdlePopUp";
 import { Dashboard } from "./Components/Pages/Dashboard";
 import { Analytics } from "./Components/Pages/Analytics";
 import { History } from "./Components/Pages/History";
@@ -16,7 +12,6 @@ type PageKey = "dashboard" | "analytics" | "history" | "settings";
 type ThemeMode = "dark" | "light";
 
 function App() {
-  const [breakData, setBreakData] = useState<BreakData | null>(null);
   const [hasPreferences, setHasPreferences] = useState<boolean | null>(null);
   const [currentPage, setCurrentPage] = useState<PageKey>("dashboard");
   const [theme, setTheme] = useState<ThemeMode>(() => {
@@ -32,7 +27,10 @@ function App() {
   useEffect(() => {
     invoke<boolean>("preference_exist")
       .then(setHasPreferences)
-      .catch(() => setHasPreferences(false));
+      .catch((err) => {
+        console.error("preference_exist failed:", err);
+        setHasPreferences(true);
+      });
   }, []);
 
   const toggleTheme = () => {
@@ -70,18 +68,6 @@ function App() {
           <section className="app-content">{renderPage()}</section>
         </main>
       )}
-
-      <PopUp onBreakStart={(data) => setBreakData(data)} />
-
-      {breakData && (
-        <BreakPopUp
-          breakData={breakData}
-          onBreakEnd={() => setBreakData(null)}
-        />
-      )}
-
-      <FocusPopUp />
-      <IdlePopUp />
     </div>
   );
 }

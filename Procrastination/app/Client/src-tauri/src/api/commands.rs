@@ -1,7 +1,7 @@
 use std::sync::mpsc::{Sender, Receiver, TryRecvError};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::Thread;
@@ -13,15 +13,15 @@ use tauri::async_runtime::handle;
 use tauri::AppHandle;
 
 use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before};
+use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history};
 use crate::features::feature_extractor::run_extractor;
 use tauri::{Manager, State};
 use tauri::WebviewUrl::App;
 use crate::config::AppConfig;
 use crate::models::table_structs::{BreakSessions, Input, UserPreferences};
-use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage};
+use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage, RetrainingStats, RetrainingResult, StateDistribution, FocusScore, PredictionHistoryRow, ActivityScore};
 use crate::intervention::activity::break_activities;
-
+use crate::ml::inference::load_model;
 
 #[tauri::command]
 pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_state: State<ModelState>, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<(), String> {
@@ -202,9 +202,161 @@ pub fn save_user_activity(config: State<AppConfig>, chosen_list: Vec<String>) ->
 }
 
 #[tauri::command]
+pub fn get_saved_activities(config: State<AppConfig>) -> Result<Vec<String>, String> {
+    get_user_saved_activities(&config.paths.database_path)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_activity_scores(config: State<AppConfig>) -> Result<Vec<ActivityScore>, String> {
+    crate::database::sqlite::get_activity_scores(&config.paths.database_path)
+        .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
 pub fn update_label_streak(config: State<AppConfig>, state_confirmation: IdleFocusedPackage) -> Result<(), String> {
 
     update_n_windows_before(&config.paths.database_path, state_confirmation).map_err(|err| err.to_string())?;
 
     Ok(())
+}
+
+
+
+
+#[tauri::command]
+pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingStats, String> {
+    let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path)
+        .map_err(|e| e.to_string())?;
+
+    let retraining_needed = correction_rate > 0.25 && labelled_count >= 50;
+
+    println!(
+        "Retraining check — correction rate: {:.2}%, labelled rows: {}, needed: {}",
+        correction_rate * 100.0,
+        labelled_count,
+        retraining_needed
+    );
+
+    Ok(RetrainingStats {
+        correction_rate,
+        labelled_count,
+        retraining_needed,
+    })
+}
+
+
+
+#[tauri::command]
+pub fn trigger_retraining(
+    config: State<AppConfig>,
+    model_state: State<ModelState>,
+) -> Result<RetrainingResult, String> {
+    let db_path = config.paths.database_path.to_str()
+        .ok_or("Invalid database path")?
+        .to_string();
+
+    let model_output_path = config.paths.model_path.to_str()
+        .ok_or("Invalid model path")?
+        .to_string();
+
+    // Resolve the path to retrain.py relative to the project
+    // During development this works; for production we use sidecar (see below)
+    let script_path = std::path::Path::new("../../../ml/retrain.py");
+
+    println!("Triggering retraining...");
+    println!("DB path: {}", db_path);
+    println!("Model output: {}", model_output_path);
+
+    let output = std::process::Command::new("python")
+        .arg(script_path)
+        .arg(&db_path)
+        .arg(&model_output_path)
+        .output()
+        .map_err(|e| format!("Failed to spawn Python process: {}", e))?;
+
+    // Print Python stdout/stderr to Rust console for debugging
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("Python stdout:\n{}", stdout);
+    if !stderr.is_empty() {
+        println!("Python stderr:\n{}", stderr);
+    }
+
+    if !output.status.success() {
+        return Ok(RetrainingResult {
+            success: false,
+            message: format!("Retraining failed: {}", stderr),
+        });
+    }
+
+    // Reload the model from the new path
+    println!("Reloading model from: {}", model_output_path);
+    let new_session = load_model(std::path::PathBuf::from(&model_output_path))
+        .map_err(|e| format!("Failed to load retrained model: {}", e))?;
+
+    {
+        let mut session_guard = model_state.session.lock()
+            .map_err(|e| format!("Failed to lock model session: {}", e))?;
+        *session_guard = new_session;
+        println!("Model session replaced successfully");
+    }
+
+    // Clean up old input events
+    clear_old_events(&config.paths.database_path)
+        .map_err(|e| format!("Failed to clear old events: {}", e))?;
+
+    Ok(RetrainingResult {
+        success: true,
+        message: "Model retrained successfully and loaded. Old input events cleared.".to_string(),
+    })
+}
+
+
+
+
+
+//analyticsn  history
+#[tauri::command]
+pub fn get_analytics_stats(
+    range_days: i64,
+    config: State<AppConfig>
+) -> Result<StateDistribution, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_prediction_stats(&config.paths.database_path, since)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_analytics_focus_score(
+    range_days: i64,
+    config: State<AppConfig>
+) -> Result<FocusScore, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_focus_score(&config.paths.database_path, since)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_history(
+    range_days: i64,
+    state_filter: Option<String>,
+    config: State<AppConfig>
+) -> Result<Vec<PredictionHistoryRow>, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_prediction_history(&config.paths.database_path, since, state_filter, 100)
+        .map_err(|e| e.to_string())
 }

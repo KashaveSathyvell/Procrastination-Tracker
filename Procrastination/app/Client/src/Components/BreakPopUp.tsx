@@ -4,6 +4,8 @@ import { useEffect, useState } from 'react';
 import { BreakData } from './PopUp';
 import './BreakPopUp.css';
 
+
+
 type BreakState = 'active' | 'expired';
 
 type BreakPopUpProps = {
@@ -13,10 +15,10 @@ type BreakPopUpProps = {
 
 export const BreakPopUp = ({ breakData, onBreakEnd }: BreakPopUpProps) => {
     const [breakState, setBreakState] = useState<BreakState>('active');
-    const [secondsLeft, setSecondsLeft] = useState(breakData.duration * 60);
+    const [secondsLeft, setSecondsLeft] = useState((breakData.duration ?? 5) * 60);
 
     useEffect(() => {
-        setSecondsLeft(breakData.duration * 60);
+        setSecondsLeft((breakData.duration ?? 5) * 60);
         setBreakState('active');
     }, [breakData]);
 
