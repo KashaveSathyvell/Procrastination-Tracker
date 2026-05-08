@@ -97,6 +97,18 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_input_events_timestamp
+            ON input_events(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_feature_vectors_timestamp
+            ON feature_vectors(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_predictions_timestamp
+            ON predictions(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_interventions_timestamp
+            ON interventions(timestamp);
         "
     )?;
 
@@ -257,13 +269,16 @@ pub fn update_user_label(db_path: &Path, updated: &UpdateIntervention) -> Result
     Ok(())
 }
 
-pub fn prediction_corrected(db_path:&Path, prediction_id: i64, corrected: bool) -> Result<()> {
+pub fn prediction_corrected_n_windows(db_path: &Path, timestamp: i64, streak_windows: i64, corrected: bool, ) -> Result<()> {
     let conn = open_connection(db_path)?;
 
-    conn.execute("UPDATE predictions \
-    SET was_corrected = ?1 \
-    WHERE id = ?2"
-    , params![corrected, prediction_id])?;
+    conn.execute(
+        "UPDATE predictions
+         SET was_corrected = ?1
+         WHERE timestamp <= ?2
+         AND timestamp >= (?2 - (?3 * 60) - 30)",
+        params![corrected, timestamp, streak_windows],
+    )?;
 
     Ok(())
 }
