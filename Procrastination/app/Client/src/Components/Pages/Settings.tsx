@@ -28,8 +28,22 @@ type ActivityScorePayload = {
   times_suggested: number;
 };
 
+type StreakSettingsPayload = {
+  focusedStreakWindow: number;
+};
+
+const FOCUS_STREAK_OPTIONS = [5, 8, 10, 12, 15, 20];
+
 export const Settings = ({ theme, setTheme }: SettingsProps) => {
-  const [activities, setActivities] = useState<string[]>([]);
+  const [savedActivities, setSavedActivities] = useState<string[]>([]);
+  const [allActivities, setAllActivities] = useState<string[]>([]);
+  const [activitiesLoading, setActivitiesLoading] = useState(false);
+  const [activitiesError, setActivitiesError] = useState<string | null>(null);
+
+  const [focusedStreakWindow, setFocusedStreakWindow] = useState<number>(15);
+  const [streakSaveSuccess, setStreakSaveSuccess] = useState(false);
+  const [streakSaveError, setStreakSaveError] = useState<string | null>(null);
+
   const [activityScores, setActivityScores] = useState<ActivityScorePayload[]>([]);
   const [activityScoresLoading, setActivityScoresLoading] = useState(true);
   const [retrainingStats, setRetrainingStats] = useState<RetrainingStatsPayload | null>(null);
@@ -71,12 +85,41 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       .finally(() => setRetrainingStatsLoading(false));
   }, []);
 
+  const loadSavedActivities = useCallback(() => {
+    return invoke<string[]>("get_saved_activities")
+      .then((items) => {
+        setSavedActivities(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        setSavedActivities([]);
+      });
+  }, []);
+
   useEffect(() => {
-    // get_saved_activities returns only activities the user saved in onboarding
-    // (from user_preferences), not the full catalog from get_preference.
-    invoke<string[]>("get_saved_activities")
-      .then(setActivities)
-      .catch(() => setActivities([]));
+    loadSavedActivities();
+    invoke<string[]>("get_preference")
+      .then((items) => {
+        setAllActivities(Array.isArray(items) ? items : []);
+      })
+      .catch(() => {
+        setAllActivities([]);
+      });
+  }, [loadSavedActivities]);
+
+  useEffect(() => {
+    invoke<StreakSettingsPayload>("get_streak_settings")
+      .then((settings) => {
+        const nextValue = Number(settings?.focusedStreakWindow);
+        if (FOCUS_STREAK_OPTIONS.includes(nextValue)) {
+          setFocusedStreakWindow(nextValue);
+        } else {
+          setFocusedStreakWindow(15);
+        }
+      })
+      .catch(() => {
+        // Fail silently and keep default value.
+        setFocusedStreakWindow(15);
+      });
   }, []);
 
   useEffect(() => {
@@ -93,6 +136,51 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
 
   const correctionPercent =
     retrainingStats != null ? Math.round(Math.min(1, Math.max(0, retrainingStats.correction_rate)) * 100) : null;
+
+  const availableActivities = allActivities.filter((activity) => !savedActivities.includes(activity));
+
+  const handleAddActivity = async (activity: string) => {
+    setActivitiesLoading(true);
+    setActivitiesError(null);
+    try {
+      await invoke("save_user_activity", { chosenList: [activity] });
+      await loadSavedActivities();
+    } catch (_e) {
+      setActivitiesError("Could not add activity. Please try again.");
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  const handleRemoveActivity = async (activity: string) => {
+    setActivitiesLoading(true);
+    setActivitiesError(null);
+    try {
+      await invoke("delete_activity", { activityName: activity });
+      await loadSavedActivities();
+    } catch (_e) {
+      setActivitiesError("Could not remove activity. Please try again.");
+    } finally {
+      setActivitiesLoading(false);
+    }
+  };
+
+  const handleFocusedStreakChange = async (nextValue: number) => {
+    const prevValue = focusedStreakWindow;
+    setFocusedStreakWindow(nextValue);
+    setStreakSaveError(null);
+    setStreakSaveSuccess(false);
+    try {
+      await invoke("save_streak_settings", {
+        settings: { focusedStreakWindow: nextValue },
+      });
+      setStreakSaveSuccess(true);
+      setTimeout(() => setStreakSaveSuccess(false), 2000);
+    } catch (_e) {
+      setFocusedStreakWindow(prevValue);
+      setStreakSaveError("Could not save setting. Reverted to previous value.");
+    }
+  };
 
   const handleRetrain = async () => {
     if (!retrainingStats?.retraining_needed) return;
@@ -136,26 +224,79 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
           <span>75%</span>
         </div>
         {/* TODO: Make detection threshold configurable via Tauri settings command. */}
-        <div className="settings-stat">
-          <span className="status-secondary">Streak window</span>
-          <span>15 minutes</span>
+      </section>
+
+      <section className="card settings-section">
+        <h3 className="section-title">Detection Settings</h3>
+        <div className="detection-settings-row">
+          <label htmlFor="focused-streak-window">Focus check-in after:</label>
+          <select
+            id="focused-streak-window"
+            value={focusedStreakWindow}
+            onChange={(e) => handleFocusedStreakChange(Number(e.target.value))}
+          >
+            {FOCUS_STREAK_OPTIONS.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {minutes} minutes
+              </option>
+            ))}
+          </select>
         </div>
+        <p className="status-secondary">
+          The system will check in if you appear focused for this long. Lower this if you tend to lose focus before 15
+          minutes.
+        </p>
+        {streakSaveSuccess && <p className="settings-success">Saved</p>}
+        {streakSaveError && <p className="settings-error">{streakSaveError}</p>}
       </section>
 
       <section className="card settings-section">
         <h3 className="section-title">Break Activities</h3>
         <div className="settings-pills">
-          {activities.length > 0 ? (
-            activities.map((activity) => (
-              <span key={activity} className="pill">
-                {activity}
+          {savedActivities.length > 0 ? (
+            savedActivities.map((activity) => (
+              <span key={activity} className="pill settings-activity-pill">
+                <span>{activity}</span>
+                <button
+                  type="button"
+                  className="settings-activity-remove"
+                  onClick={() => handleRemoveActivity(activity)}
+                  disabled={activitiesLoading}
+                  aria-label={`Remove ${activity}`}
+                >
+                  ✕
+                </button>
               </span>
             ))
           ) : (
-            <span className="status-secondary">No activities found.</span>
+            <span className="settings-warning">Add at least one activity so the system can suggest breaks.</span>
           )}
         </div>
-        <p className="status-secondary">To change activities, restart onboarding.</p>
+
+        {activitiesLoading && <p className="status-secondary">Updating activities...</p>}
+
+        {availableActivities.length > 0 ? (
+          <div className="settings-add-activities">
+            <p className="status-secondary">Add activity</p>
+            <div className="settings-pills">
+              {availableActivities.map((activity) => (
+                <button
+                  key={activity}
+                  type="button"
+                  className="settings-add-activity-btn"
+                  onClick={() => handleAddActivity(activity)}
+                  disabled={activitiesLoading}
+                >
+                  {activity}
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <p className="status-secondary">All available activities added.</p>
+        )}
+
+        {activitiesError && <p className="settings-error">{activitiesError}</p>}
       </section>
 
       <section className="card settings-section activity-effectiveness-section">

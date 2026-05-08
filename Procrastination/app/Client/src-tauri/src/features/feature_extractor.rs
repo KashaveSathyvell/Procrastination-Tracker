@@ -1,3 +1,4 @@
+use std::cmp::Ordering;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;
@@ -5,11 +6,28 @@ use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use ort::session::Session;
 use tauri::{AppHandle, Emitter, Manager};
-use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions, update_break_focus_score, update_pref_focus_score};
+use crate::database::sqlite::{collect_events, insert_features, insert_predictions, insert_interventions, update_break_focus_score, update_pref_focus_score, get_setting};
 use crate::intervention::jitai::suggest_activity;
 use crate::ml::inference::run_inference;
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions};
 use crate::models::models::{IdleFocusedPackage, InterventionPackage, PredictionPackage};
+
+fn show_popup_window(app_handle: &AppHandle) {
+    if let Some(popup_window) = app_handle.get_webview_window("popup") {
+        if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
+            let screen_size = monitor.size();
+            let scale = monitor.scale_factor();
+            let popup_w = (360.0 * scale) as i32;
+            let popup_h = (480.0 * scale) as i32;
+            let margin = (16.0 * scale) as i32;
+            let x = (screen_size.width as i32) - popup_w - margin;
+            let y = (screen_size.height as i32) - popup_h - margin;
+            let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
+        }
+        let _ = popup_window.show();
+        let _ = popup_window.set_focus();
+    }
+}
 
 pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>, break_id: &Arc<Mutex<Option<i64>>>) {
     let confidence_threshold = 0.75;
@@ -17,12 +35,16 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
     let mut focused_counter = 0;
     let mut idle_counter = 0;
 
+    let focused_streak_threshold: i32 = get_setting(db_path, "focused_streak_window").unwrap_or(None).and_then(|v| v.parse::<i32>().ok()).unwrap_or(15);
+
     let mut post_break_remaining_windows = 0;
     let mut post_break_scores: Vec<f64> = Vec::new();
+    let mut resume_from_ts: Option<i64> = None;
 
     thread::sleep(Duration::from_secs(60));
 
     loop {
+
         if !running.load(std::sync::atomic::Ordering::SeqCst) { break; }
 
         if on_break.load(std::sync::atomic::Ordering::SeqCst) {
@@ -34,6 +56,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_remaining_windows = 5;
             post_break_scores.clear();
             end_break.store(false, std::sync::atomic::Ordering::SeqCst);
+            // Ensure we never compute a window that includes break-time events.
+            // We only resume predictions once a full 60s window exists after "I'm back".
+            resume_from_ts = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64);
         }
 
         let start_time = std::time::Instant::now();
@@ -41,6 +66,18 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         let window_start = window_end - 60;
 
         let app_handle = app_handle.clone();
+
+        if let Some(resume_ts) = resume_from_ts {
+            if window_start < resume_ts {
+                // Not enough post-break time has elapsed to form a clean 60s window.
+                let elapsed = start_time.elapsed();
+                let sleep = Duration::from_secs(60).saturating_sub(elapsed);
+                thread::sleep(sleep);
+                continue;
+            } else {
+                resume_from_ts = None;
+            }
+        }
 
         let events = collect_events(db_path, window_start, window_end).unwrap();
 
@@ -96,17 +133,21 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             else {
                 post_break_scores.push(0.0)
             }
+
+            println!("POST BREAK REMAINING WINDOWS: {}", post_break_remaining_windows);
+
             post_break_remaining_windows -= 1
         }
         else if post_break_remaining_windows == 0 && !post_break_scores.is_empty() {
+
+            println!("UPDATING POST BREAK AVERAGE");
+
             let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
 
             let break_session_id = break_id.lock().unwrap();
             if let Some(break_sess_id) = *break_session_id {
-                update_break_focus_score(&db_path, break_sess_id, post_break_average)
-                    .expect("TODO: panic message");
-                update_pref_focus_score(&db_path, break_sess_id, post_break_average)
-                    .expect("TODO: panic message");
+                update_break_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
+                update_pref_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
             }
 
             post_break_scores.clear();
@@ -163,23 +204,11 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 preference_id: Option::from(activity_suggestion.preference_id),
             };
 
-            if let Some(popup_window) = app_handle.get_webview_window("popup") {
-                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
-                    let screen_size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let popup_w = (360.0 * scale) as i32;
-                    let popup_h = (480.0 * scale) as i32;
-                    let margin = (16.0 * scale) as i32;
-                    let x = (screen_size.width as i32) - popup_w - margin;
-                    let y = (screen_size.height as i32) - popup_h - margin;
-                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
-                }
-                let _ = popup_window.show();
-                let _ = popup_window.set_focus();
-            }
+            show_popup_window(&app_handle);
+
             app_handle.emit("new_intervention", payload).expect("TODO: panic message");
         }
-        else if focused_counter == 15 {
+        else if focused_counter == focused_streak_threshold {
 
             let focused_payload = IdleFocusedPackage {
                 timestamp: window_end,
@@ -189,20 +218,8 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             };
 
             focused_counter = 0;
-            if let Some(popup_window) = app_handle.get_webview_window("popup") {
-                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
-                    let screen_size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let popup_w = (360.0 * scale) as i32;
-                    let popup_h = (480.0 * scale) as i32;
-                    let margin = (16.0 * scale) as i32;
-                    let x = (screen_size.width as i32) - popup_w - margin;
-                    let y = (screen_size.height as i32) - popup_h - margin;
-                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
-                }
-                let _ = popup_window.show();
-                let _ = popup_window.set_focus();
-            }
+
+            show_popup_window(&app_handle);
             app_handle.emit("focus_check", focused_payload).expect("TODO: panic message");
 
         }
@@ -216,20 +233,8 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             };
 
             idle_counter = 0;
-            if let Some(popup_window) = app_handle.get_webview_window("popup") {
-                if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
-                    let screen_size = monitor.size();
-                    let scale = monitor.scale_factor();
-                    let popup_w = (360.0 * scale) as i32;
-                    let popup_h = (480.0 * scale) as i32;
-                    let margin = (16.0 * scale) as i32;
-                    let x = (screen_size.width as i32) - popup_w - margin;
-                    let y = (screen_size.height as i32) - popup_h - margin;
-                    let _ = popup_window.set_position(tauri::PhysicalPosition::new(x, y));
-                }
-                let _ = popup_window.show();
-                let _ = popup_window.set_focus();
-            }
+
+            show_popup_window(&app_handle);
             app_handle.emit("idle_check", idle_payload).expect("TODO: panic message");
             
         }

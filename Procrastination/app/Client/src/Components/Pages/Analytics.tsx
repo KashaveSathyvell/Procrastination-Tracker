@@ -60,9 +60,11 @@ export const Analytics = () => {
 
   const [stats, setStats] = useState<AnalyticsStats | null>(null);
   const [statsLoading, setStatsLoading] = useState(true);
+  const [statsError, setStatsError] = useState<string | null>(null);
 
   const [focusPayload, setFocusPayload] = useState<AnalyticsFocusScore | null>(null);
   const [focusLoading, setFocusLoading] = useState(true);
+  const [focusError, setFocusError] = useState<string | null>(null);
 
   const [retraining, setRetraining] = useState<RetrainingCheck | null>(null);
   const [retrainingLoading, setRetrainingLoading] = useState(true);
@@ -71,12 +73,16 @@ export const Analytics = () => {
     let cancelled = false;
 
     setStatsLoading(true);
+    setStatsError(null);
     invoke<AnalyticsStats>("get_analytics_stats", { rangeDays })
       .then((data) => {
         if (!cancelled) setStats(data);
       })
-      .catch(() => {
-        if (!cancelled) setStats(null);
+      .catch((err) => {
+        if (!cancelled) {
+          setStats(null);
+          setStatsError(err instanceof Error ? err.message : String(err));
+        }
       })
       .finally(() => {
         if (!cancelled) setStatsLoading(false);
@@ -91,12 +97,16 @@ export const Analytics = () => {
     let cancelled = false;
 
     setFocusLoading(true);
+    setFocusError(null);
     invoke<AnalyticsFocusScore>("get_analytics_focus_score", { rangeDays })
       .then((data) => {
         if (!cancelled) setFocusPayload(data);
       })
-      .catch(() => {
-        if (!cancelled) setFocusPayload(null);
+      .catch((err) => {
+        if (!cancelled) {
+          setFocusPayload(null);
+          setFocusError(err instanceof Error ? err.message : String(err));
+        }
       })
       .finally(() => {
         if (!cancelled) setFocusLoading(false);
@@ -166,15 +176,19 @@ export const Analytics = () => {
           <div className="analytics-widget-loading" aria-hidden="true">
             <span className="analytics-loading-dots">Loading</span>
           </div>
-        ) : !stats || stats.total === 0 ? (
+        ) : statsError ? (
+          <p className="analytics-empty-message" style={{ color: "var(--danger)" }}>
+            Failed to load analytics stats: {statsError}
+          </p>
+        ) : stats && stats.total === 0 ? (
           <p className="analytics-empty-message status-secondary">
             No data for this period — start a monitoring session to see your analytics.
           </p>
         ) : (
           <div className="bar-chart">
             {DISTRIBUTION_ROWS.map((row) => {
-              const pct = Math.min(100, Math.max(0, stats[row.pctField]));
-              const count = stats[row.countField];
+              const pct = Math.min(100, Math.max(0, stats![row.pctField]));
+              const count = stats![row.countField];
               return (
                 <div key={row.label} className="bar-item">
                   <div className="bar-track">
@@ -198,6 +212,8 @@ export const Analytics = () => {
             <div className="analytics-widget-loading analytics-widget-loading--inline">
               <span className="analytics-loading-dots">Loading</span>
             </div>
+          ) : focusError ? (
+            <p style={{ color: "var(--danger)" }}>Failed to load focus score: {focusError}</p>
           ) : (
             <>
               <p className="metric-value">{focusDisplayScore !== null ? `${focusDisplayScore} / 100` : "—"}</p>
@@ -206,7 +222,7 @@ export const Analytics = () => {
           )}
         </div>
         <div className="metric-card">
-          <p className="metric-label">Corrections Rate</p>
+          <p className="metric-label">Corrections Since Last Training</p>
           {retrainingLoading ? (
             <div className="analytics-widget-loading analytics-widget-loading--inline">
               <span className="analytics-loading-dots">Loading</span>
@@ -214,7 +230,7 @@ export const Analytics = () => {
           ) : (
             <>
               <p className="metric-value">{correctionPercent !== null ? `${correctionPercent}%` : "—"}</p>
-              <p className="status-secondary">Predictions manually corrected by user feedback.</p>
+              <p className="status-secondary">Based on predictions since last model update</p>
             </>
           )}
         </div>

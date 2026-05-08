@@ -1,0 +1,79 @@
+.break-window-shell {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg-primary);
+  color: var(--color-text, var(--text-primary));
+  padding: 2rem;
+}
+
+.break-window-card {
+  width: 100%;
+  max-width: 340px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border-card);
+  border-radius: 12px;
+  box-shadow: var(--card-shadow);
+  padding: 20px;
+  text-align: center;
+}
+
+.break-window-title {
+  font-size: 18px;
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.break-window-activity {
+  font-size: 14px;
+  color: var(--text-secondary);
+  margin-bottom: 16px;
+}
+
+.break-window-timer {
+  font-size: 34px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  margin-bottom: 18px;
+}
+
+.break-window-expired {
+  font-size: 16px;
+  color: var(--warning);
+  margin-bottom: 18px;
+}
+
+.break-window-actions {
+  display: flex;
+  gap: 10px;
+  justify-content: center;
+}
+
+.break-btn-primary,
+.break-btn-secondary {
+  border-radius: 10px;
+  border: 1px solid var(--border-strong);
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.break-btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+}
+
+.break-btn-primary:hover {
+  background: var(--accent-hover);
+}
+
+.break-btn-secondary {
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.break-btn-secondary:hover {
+  background: var(--accent-active-bg);
+}

@@ -28,13 +28,24 @@ const rangeKeyToDays: Record<RangeKey, number> = {
 };
 
 const formatTimestamp = (unixSeconds: number) => {
-  const d = new Date(unixSeconds * 1000);
-  const dd = String(d.getDate()).padStart(2, "0");
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const yyyy = d.getFullYear();
-  const hh = String(d.getHours()).padStart(2, "0");
-  const min = String(d.getMinutes()).padStart(2, "0");
-  return `${dd}/${mm}/${yyyy} ${hh}:${min}`;
+  const date = new Date(unixSeconds * 1000);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  const dateKey = date.toDateString();
+  const todayKey = now.toDateString();
+  const yesterdayKey = yesterday.toDateString();
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const timePart = `${hh}:${mm}`;
+
+  if (dateKey === todayKey) return `Today ${timePart}`;
+  if (dateKey === yesterdayKey) return `Yesterday ${timePart}`;
+
+  const month = date.toLocaleString("en-US", { month: "short" });
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${month} ${day}, ${timePart}`;
 };
 
 export const History = () => {

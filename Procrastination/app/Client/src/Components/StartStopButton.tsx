@@ -2,17 +2,52 @@ import { invoke } from '@tauri-apps/api/core'
 import { useState } from 'react'
 import "./StartStopButton.css"
 
-export const StartStopButton = () => {
-    const [isRunning, setIsRunning] = useState(false);
+type StartStopButtonProps = {
+    isMonitoring: boolean,
+    onMonitoringChange: (active: boolean) => void,
+}
+
+export const StartStopButton = ({ isMonitoring, onMonitoringChange }: StartStopButtonProps) => {
     const [isLoading, setIsLoading] = useState(false);
     const [error, setError] = useState<string | null>(null);
+
+    const isStateNotManagedError = (err: unknown) => {
+        const msg =
+            typeof err === 'string'
+                ? err
+                : (err as any)?.message
+                    ? String((err as any).message)
+                    : String(err);
+
+        return (
+            msg.includes('state not managed') ||
+            msg.includes('must call') && msg.includes('.manage()') ||
+            msg.includes('.manage()')
+        );
+    };
+
+    const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     const handleStart = async () => {
         setIsLoading(true);
         setError(null);
         try {
-            await invoke('start_collect');
-            setIsRunning(true);
+            const maxAttempts = 4;
+            const delayMs = 400;
+
+            for (let attempt = 0; attempt < maxAttempts; attempt++) {
+                try {
+                    await invoke('start_collect');
+                    onMonitoringChange(true);
+                    return;
+                } catch (err) {
+                    const shouldRetry =
+                        isStateNotManagedError(err) && attempt < maxAttempts - 1;
+
+                    if (!shouldRetry) throw err;
+                    await sleep(delayMs);
+                }
+            }
         } catch (e) {
             setError(`Failed to start: ${e}`);
         } finally {
@@ -25,7 +60,7 @@ export const StartStopButton = () => {
         setError(null);
         try {
             await invoke('stop_collect');
-            setIsRunning(false);
+            onMonitoringChange(false);
         } catch (e) {
             setError(`Failed to stop: ${e}`);
         } finally {
@@ -37,15 +72,15 @@ export const StartStopButton = () => {
         <div className="button_container">
             <button
                 onClick={handleStart}
-                disabled={isRunning || isLoading}
+                disabled={isMonitoring || isLoading}
             >
-                {isLoading && !isRunning ? 'Starting...' : 'Start'}
+                {isLoading && !isMonitoring ? 'Starting...' : 'Start'}
             </button>
             <button
                 onClick={handleStop}
-                disabled={!isRunning || isLoading}
+                disabled={!isMonitoring || isLoading}
             >
-                {isLoading && isRunning ? 'Stopping...' : 'Stop'}
+                {isLoading && isMonitoring ? 'Stopping...' : 'Stop'}
             </button>
             {error && <p className="start-stop-error">{error}</p>}
         </div>

@@ -57,7 +57,7 @@
 
 .confidence-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   transition: width 150ms ease;
 }
 
@@ -110,6 +110,7 @@
   margin-top: 8px;
   font-size: 22px;
   font-weight: 500;
+  color: var(--accent);
 }
 
 .range-toggle,
@@ -120,18 +121,24 @@
 }
 
 .pill-toggle {
-  border: 1px solid var(--border);
+  border: 1px solid var(--border-card);
   border-radius: 20px;
-  background: var(--bg-elevated);
+  background: var(--bg-surface);
   color: var(--text-secondary);
   padding: 6px 14px;
   cursor: pointer;
   transition: all 150ms ease;
 }
 
-.pill-toggle.active,
 .pill-toggle:hover {
-  border-color: var(--accent);
+  border-color: var(--border-strong);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.pill-toggle.active {
+  border: 1.5px solid var(--accent);
+  background: color-mix(in srgb, var(--accent) 10%, transparent);
   color: var(--text-primary);
 }
 
@@ -348,6 +355,97 @@
   gap: 8px;
 }
 
+/* --- Detection Settings (Settings) --- */
+.detection-settings-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.detection-settings-row label {
+  color: var(--text-primary);
+}
+
+.detection-settings-row select {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  padding: 6px 10px;
+}
+
+.settings-success {
+  color: var(--success);
+  margin: 0;
+}
+
+.settings-error {
+  color: var(--danger);
+  margin: 0;
+}
+
+/* --- Add/Remove Activities (Settings) --- */
+.settings-activity-pill {
+  gap: 6px;
+}
+
+.settings-activity-remove {
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  width: 18px;
+  height: 18px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  line-height: 1;
+}
+
+.settings-activity-remove:hover:not(:disabled) {
+  color: var(--text-primary);
+  border-color: var(--accent);
+}
+
+.settings-activity-remove:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-warning {
+  color: var(--warning);
+  margin: 0;
+}
+
+.settings-add-activities {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.settings-add-activity-btn {
+  border: 1px solid var(--border);
+  border-radius: 20px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  padding: 4px 12px;
+  cursor: pointer;
+  transition: border-color 150ms ease, color 150ms ease;
+}
+
+.settings-add-activity-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+  color: var(--text-primary);
+}
+
+.settings-add-activity-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
 /* --- Break Activity Effectiveness (Settings) --- */
 .activity-effectiveness-section .activity-effectiveness-title {
   margin-bottom: 0;
@@ -422,7 +520,7 @@
 
 .activity-effectiveness-score-fill {
   height: 100%;
-  background: var(--accent);
+  background: linear-gradient(90deg, var(--accent), var(--accent-hover));
   transition: width 150ms ease;
 }
 
@@ -484,7 +582,7 @@
   border: 1px solid var(--border);
   border-radius: 12px;
   background: var(--accent);
-  color: var(--bg-primary);
+  color: #ffffff;
   padding: 10px 20px;
   font-weight: 500;
   cursor: pointer;

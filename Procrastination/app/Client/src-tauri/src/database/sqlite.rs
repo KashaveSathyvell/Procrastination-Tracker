@@ -8,7 +8,11 @@ use crate::models::table_structs::{FeatureVectors, Input, Predictions, Intervent
 
 fn open_connection(db_path: &Path) -> Result<Connection> {
     let conn = Connection::open(db_path)?;
-    conn.execute_batch("PRAGMA foreign_keys = ON;")?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 5000;",
+    )?;
     Ok(conn)
 }
 
@@ -88,6 +92,11 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             FOREIGN KEY(intervention_id) REFERENCES interventions(id)
             FOREIGN KEY(preference_id) REFERENCES user_preferences(id)
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         "
     )?;
 
@@ -105,6 +114,28 @@ pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
         params![input.timestamp, input.event_type, input.event_action, input.key_code.as_deref(), input.mouse_x, input.mouse_y, input.wheel_x, input.wheel_y, input.button.as_deref(), input.active_window]
     )?;
 
+    Ok(())
+}
+
+pub fn insert_events_conn(conn: &Connection, input: &Input) -> Result<()> {
+    conn.execute(
+        "INSERT INTO input_events(timestamp, event_type, \
+         event_action, key_code, mouse_x, mouse_y, \
+         wheel_x, wheel_y, button, active_window) \
+         Values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            input.timestamp,
+            input.event_type,
+            input.event_action,
+            input.key_code.as_deref(),
+            input.mouse_x,
+            input.mouse_y,
+            input.wheel_x,
+            input.wheel_y,
+            input.button.as_deref(),
+            input.active_window
+        ],
+    )?;
     Ok(())
 }
 
@@ -183,6 +214,31 @@ pub fn update_break(db_path: &Path, updated_break: EndBreak, end_time: i64) -> R
         SET returned_on_time = ?1, end_timestamp = ?2 \
         WHERE id = ?3",
         params![updated_break.returned_on_time, end_time, updated_break.break_session_id]
+    )?;
+
+    Ok(())
+}
+
+pub fn get_break_plan(db_path: &Path, break_session_id: i64) -> Result<(i64, i64)> {
+    let conn = open_connection(db_path)?;
+
+    conn.query_row(
+        "SELECT start_timestamp, planned_duration_minutes
+         FROM break_sessions
+         WHERE id = ?1",
+        params![break_session_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
+pub fn extend_break_planned_duration(db_path: &Path, break_session_id: i64, extra_minutes: i64) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "UPDATE break_sessions
+         SET planned_duration_minutes = planned_duration_minutes + ?1
+         WHERE id = ?2",
+        params![extra_minutes, break_session_id],
     )?;
 
     Ok(())
@@ -274,6 +330,40 @@ pub fn get_all_preferences(db_path: &Path) -> Result<Vec<UserPreferences>> {
     Ok(preferences)
 }
 
+
+pub fn get_recent_predictions(db_path: &Path, limit: i64) -> Result<Vec<PredictionHistoryRow>> {
+    let conn = open_connection(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT
+            p.id,
+            p.timestamp,
+            p.predicted_state,
+            p.confidence,
+            p.was_corrected,
+            i.user_label
+         FROM predictions p
+         LEFT JOIN interventions i ON i.predictions_id = p.id
+         ORDER BY p.timestamp DESC
+         LIMIT ?1"
+    )?;
+
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(PredictionHistoryRow {
+            prediction_id: row.get(0)?,
+            timestamp: row.get(1)?,
+            predicted_state: row.get(2)?,
+            confidence: row.get(3)?,
+            was_corrected: row.get::<_, i64>(4)? != 0,
+            user_label: row.get(5)?,
+        })
+    })?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<PredictionHistoryRow>>();
+
+    Ok(rows)
+}
+
 pub fn get_user_saved_activities(db_path: &Path) -> Result<Vec<String>> {
     let conn = open_connection(db_path)?;
 
@@ -323,6 +413,17 @@ pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpd
         params![updated_preference.last_suggested, updated_preference.times_suggested, updated_preference.preference_id],
     )?;
     
+    Ok(())
+}
+
+pub fn delete_user_preference(db_path: &Path, activity_name: String) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "DELETE FROM user_preferences WHERE activity_name = ?1",
+        params![activity_name],
+    )?;
+
     Ok(())
 }
 
@@ -483,7 +584,43 @@ pub fn clear_old_events(db_path: &Path) -> Result<()> {
 }
 
 
+pub fn get_setting(db_path: &Path, key: &str) -> Result<Option<String>> {
+    let conn = open_connection(db_path)?;
 
+    let result = conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![key],
+        |row| row.get(0)
+    );
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn save_setting(db_path: &Path, key: &str, value: &str) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?1, ?2)",
+        params![key, value],
+    )?;
+
+    Ok(())
+}
+
+pub fn get_predictions_count_today(db_path: &Path) -> Result<i64> {
+    let conn = open_connection(db_path)?;
+
+    conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE timestamp >= strftime('%s', 'now', 'localtime', 'start of day')",
+        params![],
+        |row| row.get(0),
+    )
+}
 
 
 //analytics n history
@@ -665,4 +802,7 @@ pub fn get_prediction_history(
 
     Ok(rows)
 }
+
+
+
 

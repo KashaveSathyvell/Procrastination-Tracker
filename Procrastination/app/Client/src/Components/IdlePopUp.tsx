@@ -56,7 +56,7 @@ export const IdlePopUp = () => {
         try {
             const { getCurrentWindow } = await import("@tauri-apps/api/window");
             const win = getCurrentWindow();
-            await win.hide();
+            if (win.label !== "main") await win.hide();
         } catch (e) {
             console.error("Failed to hide popup window:", e);
         }
@@ -81,7 +81,7 @@ export const IdlePopUp = () => {
         try {
             const { getCurrentWindow } = await import("@tauri-apps/api/window");
             const win = getCurrentWindow();
-            await win.hide();
+            if (win.label !== "main") await win.hide();
         } catch (e) {
             console.error("Failed to hide popup window:", e);
         }

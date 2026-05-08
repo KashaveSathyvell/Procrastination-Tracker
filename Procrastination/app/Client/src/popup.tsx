@@ -2,37 +2,52 @@ import "./popup-reset.css";
 import React from "react";
 import ReactDOM from "react-dom/client";
 import "./global.css";
-import { useEffect, useState } from "react";
-import { PopUp, BreakData } from "./Components/PopUp";
-import { BreakPopUp } from "./Components/BreakPopUp";
+import { useEffect } from "react";
+import { listen } from "@tauri-apps/api/event";
+import { getCurrentWindow } from "@tauri-apps/api/window";
+import { PopUp } from "./Components/PopUp";
 import { FocusPopUp } from "./Components/FocusPopUp";
 import { IdlePopUp } from "./Components/IdlePopUp";
 
-const PopupHost = () => {
-  const [breakData, setBreakData] = useState<BreakData | null>(null);
+const savedTheme = localStorage.getItem("theme") ?? "dark";
+document.documentElement.setAttribute("data-theme", savedTheme);
 
+const PopupHost = () => {
   useEffect(() => {
     const theme = localStorage.getItem("theme") ?? "dark";
     document.documentElement.setAttribute("data-theme", theme);
   }, []);
 
-  const handleBreakEnd = async () => {
-    setBreakData(null);
-    try {
-      const { getCurrentWindow } = await import("@tauri-apps/api/window");
-      const win = getCurrentWindow();
-      await win.hide();
-    } catch (e) {
-      console.error("Failed to hide popup window after break:", e);
-    }
-  };
+  useEffect(() => {
+    let unlistenFn: (() => void) | null = null;
+    const setup = async () => {
+      const unlisten = await listen("break_window_closed", async () => {
+        console.log("Break window closed event received");
+        try {
+          const win = getCurrentWindow();
+          if (win.label !== "main") {
+            await win.setAlwaysOnTop(false);
+            await win.hide();
+          }
+        } catch (e) {
+          console.error("Failed to hide popup after break close:", e);
+        }
+      });
+      unlistenFn = unlisten;
+    };
+
+    setup().catch((e) => {
+      console.error("Failed to register break_window_closed listener:", e);
+    });
+
+    return () => {
+      if (unlistenFn) unlistenFn();
+    };
+  }, []);
 
   return (
     <>
-      <PopUp onBreakStart={(data) => setBreakData(data)} />
-      {breakData && (
-        <BreakPopUp breakData={breakData} onBreakEnd={handleBreakEnd} />
-      )}
+      <PopUp />
       <FocusPopUp />
       <IdlePopUp />
     </>

@@ -8,18 +8,21 @@ use std::thread::Thread;
 use chrono::Utc;
 use ndarray::AssignElem;
 use ort::editor::Model;
+use rusqlite::params;
+use rusqlite::Connection;
 use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::async_runtime::handle;
 use tauri::AppHandle;
 
 use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history};
+use crate::database::sqlite::{initialize_database, insert_events, insert_events_conn, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration};
 use crate::features::feature_extractor::run_extractor;
-use tauri::{Manager, State};
+use crate::PendingBreakData;
+use tauri::{Emitter, Manager, State};
 use tauri::WebviewUrl::App;
 use crate::config::AppConfig;
 use crate::models::table_structs::{BreakSessions, Input, UserPreferences};
-use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage, RetrainingStats, RetrainingResult, StateDistribution, FocusScore, PredictionHistoryRow, ActivityScore};
+use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage, RetrainingStats, RetrainingResult, StateDistribution, FocusScore, PredictionHistoryRow, ActivityScore, StreakSettings, BreakInitData};
 use crate::intervention::activity::break_activities;
 use crate::ml::inference::load_model;
 
@@ -56,9 +59,80 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
 
 
     let handle2 = thread::spawn(move || {
+        const BATCH_SIZE: usize = 500;
+        let mut conn = match Connection::open(&db_path1) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to open DB connection \n                     in writer thread: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA journal_mode = WAL;
+             PRAGMA busy_timeout = 5000;") {
+            eprintln!("Failed to set pragmas: {}", e);
+        }
+        let mut batch: Vec<Input> = Vec::with_capacity(BATCH_SIZE);
         while running_clone2.load(Ordering::Relaxed) {
             match rx.try_recv() {
-                Ok(received) => { insert_events(&db_path1, &received); }
+                Ok(received) => {
+                    batch.push(received);
+
+                    while batch.len() < BATCH_SIZE {
+                        match rx.try_recv() {
+                            Ok(next) => batch.push(next),
+                            Err(TryRecvError::Empty) => break,
+                            Err(TryRecvError::Disconnected) => break,
+                        }
+                    }
+
+                    let tx = match conn.transaction() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("Failed to start batch transaction: {}", e);
+                            batch.clear();
+                            continue;
+                        }
+                    };
+
+                    let mut stmt = match tx.prepare(
+                        "INSERT INTO input_events(timestamp, event_type, \
+                         event_action, key_code, mouse_x, mouse_y, \
+                         wheel_x, wheel_y, button, active_window) \
+                         Values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to prepare batch insert statement: {}", e);
+                            batch.clear();
+                            continue;
+                        }
+                    };
+
+                    for input in &batch {
+                        if let Err(e) = stmt.execute(params![
+                            input.timestamp,
+                            input.event_type,
+                            input.event_action,
+                            input.key_code.as_deref(),
+                            input.mouse_x,
+                            input.mouse_y,
+                            input.wheel_x,
+                            input.wheel_y,
+                            input.button.as_deref(),
+                            input.active_window
+                        ]) {
+                            eprintln!("insert_events batch row failed: {}", e);
+                        }
+                    }
+
+                    drop(stmt);
+                    if let Err(e) = tx.commit() {
+                        eprintln!("Failed to commit event batch: {}", e);
+                    }
+                    batch.clear();
+                }
                 Err(TryRecvError::Empty) => { thread::sleep(Duration::from_millis(10)) }
                 _ => {}
             }
@@ -94,6 +168,18 @@ pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Resul
     
     println!("Stopping threads");
     Ok(())
+}
+
+
+#[tauri::command]
+pub fn get_recent_predictions(config: State<AppConfig>) -> Result<Vec<PredictionHistoryRow>, String> {
+    crate::database::sqlite::get_recent_predictions(&config.paths.database_path, 10)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_total_predictions_today(config: State<AppConfig>) -> Result<i64, String> {
+    get_predictions_count_today(&config.paths.database_path).map_err(|e| e.to_string())
 }
 
 
@@ -162,12 +248,93 @@ pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<Ap
     on_break.break_ended.store(true, Ordering::SeqCst);
     let end_time = Utc::now().timestamp();
 
-    println!("Break ended: session {}, on time: {}", end_break.break_session_id, end_break.returned_on_time);
+    let (start_ts, planned_mins) = get_break_plan(&config.paths.database_path, end_break.break_session_id)
+        .map_err(|e| e.to_string())?;
+    let planned_end_ts = start_ts + (planned_mins * 60);
+    let returned_on_time = end_time <= planned_end_ts;
+
+    println!("Break ended: session {}, on time: {}", end_break.break_session_id, returned_on_time);
     let mut current_break_id = on_break.break_id.lock().unwrap();
     *current_break_id = Some(end_break.break_session_id);
 
-    update_break(&config.paths.database_path, end_break, end_time).expect("TODO: panic message");
+    update_break(
+        &config.paths.database_path,
+        EndBreak { break_session_id: end_break.break_session_id, returned_on_time },
+        end_time
+    ).expect("TODO: panic message");
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn extend_break(break_session_id: i64, extra_minutes: i64, config: State<AppConfig>) -> Result<(), String> {
+    if extra_minutes <= 0 {
+        return Err("extra_minutes must be > 0".to_string());
+    }
+    extend_break_planned_duration(&config.paths.database_path, break_session_id, extra_minutes)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_break_window(
+    app_handle: AppHandle,
+    activity: String,
+    duration: i64,
+    break_session_id: i64,
+    intervention_id: i64,
+) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
+
+    let init_data = BreakInitData {
+        activity,
+        duration,
+        break_session_id,
+        intervention_id,
+    };
+
+    let pending_state = app_handle.state::<PendingBreakData>();
+    {
+        let mut slot = pending_state.data.lock().map_err(|e| e.to_string())?;
+        *slot = Some(init_data.clone());
+    }
+
+    println!("Opening break window from configured app window");
+    if let Some(window) = app_handle.get_webview_window("break") {
+        let _ = window.unminimize();
+        let _ = window.center();
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_focus();
+        let _ = app_handle.emit_to("break", "break_init_data", init_data);
+        return Ok(());
+    }
+
+    let break_url = tauri::WebviewUrl::App("break.html".into());
+    let _window = WebviewWindowBuilder::new(&app_handle, "break", break_url)
+        .title("Break Time")
+        .inner_size(380.0, 280.0)
+        .resizable(false)
+        .center()
+        .always_on_top(false)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit_to("break", "break_init_data", init_data);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_break_init_data(pending: State<PendingBreakData>) -> Result<Option<BreakInitData>, String> {
+    let mut data = pending.data.lock().map_err(|e| e.to_string())?;
+    Ok(data.take())
+}
+
+#[tauri::command]
+pub fn close_break_window(app_handle: AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("break") {
+        window.close().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -208,6 +375,11 @@ pub fn get_saved_activities(config: State<AppConfig>) -> Result<Vec<String>, Str
 }
 
 #[tauri::command]
+pub fn delete_activity(activity_name: String, config: State<AppConfig>) -> Result<(), String> {
+    delete_user_preference(&config.paths.database_path, activity_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn get_activity_scores(config: State<AppConfig>) -> Result<Vec<ActivityScore>, String> {
     crate::database::sqlite::get_activity_scores(&config.paths.database_path)
         .map_err(|e| e.to_string())
@@ -223,6 +395,21 @@ pub fn update_label_streak(config: State<AppConfig>, state_confirmation: IdleFoc
 }
 
 
+#[tauri::command]
+pub fn get_streak_settings(config: State<AppConfig>) -> Result<StreakSettings, String> {
+    let value = get_setting(&config.paths.database_path, "focused_streak_window")
+        .map_err(|e| e.to_string())?;
+
+    let focused_streak_window = value.and_then(|v| v.parse::<i64>().ok()).unwrap_or(15);
+
+    Ok(StreakSettings { focused_streak_window })
+}
+
+#[tauri::command]
+pub fn save_streak_settings(settings: StreakSettings, config: State<AppConfig>) -> Result<(), String> {
+    save_setting(&config.paths.database_path, "focused_streak_window", &settings.focused_streak_window.to_string())
+        .map_err(|e| e.to_string())
+}
 
 
 #[tauri::command]

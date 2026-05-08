@@ -13,6 +13,7 @@ export default defineConfig(async () => ({
       input: {
         main: resolve(__dirname, "index.html"),
         popup: resolve(__dirname, "popup.html"),
+        break: resolve(__dirname, "break.html"),
       },
     },
   },

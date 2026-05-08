@@ -83,6 +83,15 @@ pub struct EndBreak {
     pub returned_on_time: bool,
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct BreakInitData {
+    pub activity: String,
+    pub duration: i64,
+    pub break_session_id: i64,
+    pub intervention_id: i64,
+}
+
 #[derive(Deserialize, Serialize, Clone)]
 #[serde(rename_all = "camelCase")]
 pub struct IdleFocusedPackage {
@@ -104,6 +113,12 @@ pub struct RetrainingStats {
 pub struct RetrainingResult {
     pub success: bool,
     pub message: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "camelCase")]
+pub struct StreakSettings {
+    pub focused_streak_window: i64,
 }
 
 

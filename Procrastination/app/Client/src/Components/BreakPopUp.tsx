@@ -54,8 +54,11 @@ export const BreakPopUp = ({ breakData, onBreakEnd }: BreakPopUpProps) => {
     };
 
     const handleExtend = () => {
-        setSecondsLeft(5 * 60);
+        setSecondsLeft(prev => prev + 5 * 60);
         setBreakState('active');
+        invoke("extend_break", { breakSessionId: breakData.break_session_id, extraMinutes: 5 }).catch((e) => {
+            console.error("extend_break failed:", e);
+        });
     };
 
     return (

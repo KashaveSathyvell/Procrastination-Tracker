@@ -27,11 +27,7 @@ export type BreakData = {
 
 const LABELS = ["Focused", "At Risk", "Procrastinating", "Idle"];
 
-type PopUpProps = {
-    onBreakStart: (data: BreakData) => void,
-}
-
-export const PopUp = ({ onBreakStart }: PopUpProps) => {
+export const PopUp = () => {
     const [intervention, setIntervention] = useState<InterventionPackage | null>(null);
     const [isVisible, setIsVisible] = useState(false);
     const [showCorrection, setShowCorrection] = useState(false);
@@ -52,6 +48,7 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
 
                 try {
                     const appWindow = getCurrentWindow();
+                    await appWindow.setAlwaysOnTop(true);
                     await appWindow.setFocus();
                 } catch (e) {
                     console.error("Failed to set window to top:", e);
@@ -72,6 +69,7 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         try {
             const { getCurrentWindow } = await import("@tauri-apps/api/window");
             const win = getCurrentWindow();
+            if (win.label === "main") return;
             await win.hide();
         } catch (e) {
             console.error("Failed to hide popup window:", e);
@@ -80,59 +78,82 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
 
     const handleTakeBreak = async () => {
         if (!intervention) return;
-        if (!intervention.suggested_activity || 
-            !intervention.suggested_duration || 
-            !intervention.preference_id) {
+        const interventionData = intervention;
+        if (!interventionData.suggested_activity || 
+            !interventionData.suggested_duration || 
+            !interventionData.preference_id) {
             // No activity available, just dismiss
-            setIsVisible(false);
+            await close();
             return;
         }
 
-        setIsVisible(false);
-        setIntervention(null);
-        setShowCorrection(false);
+        await close();
 
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
-                    userLabel: intervention.prediction_label,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
+                    userLabel: interventionData.prediction_label,
                     dismissed: false,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
             const sessionId = await invoke<number>('break_start', {
-                interventionId: intervention.intervention_id,
-                activity: intervention.suggested_activity,
-                plannedDurationMins: intervention.suggested_duration,
-                preferenceId: intervention.preference_id,
+                interventionId: interventionData.intervention_id,
+                activity: interventionData.suggested_activity,
+                plannedDurationMins: interventionData.suggested_duration,
+                preferenceId: interventionData.preference_id,
             });
-            onBreakStart({
-                activity: intervention.suggested_activity,
-                duration: intervention.suggested_duration,
-                preference_id: intervention.preference_id,
-                intervention_id: intervention.intervention_id,
-                break_session_id: sessionId,
+            await invoke('open_break_window', {
+                activity: interventionData.suggested_activity,
+                duration: interventionData.suggested_duration,
+                breakSessionId: sessionId,
+                interventionId: interventionData.intervention_id,
             });
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+            } catch (e) {
+                console.error("Failed to disable always-on-top after break start:", e);
+            }
         } catch (e) {
             console.error('start_break failed:', e);
+            setIntervention(interventionData);
+            setSelectedLabel(interventionData.prediction_label);
+            setShowCorrection(false);
+            setIsVisible(true);
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.show();
+                await appWindow.setAlwaysOnTop(true);
+                await appWindow.setFocus();
+            } catch (showError) {
+                console.error("Failed to restore popup window after start break failure:", showError);
+            }
         }
     };
 
     const handleDismiss = async () => {
         if (!intervention) return;
+        const interventionData = intervention;
         close();
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
-                    userLabel: intervention.prediction_label,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
+                    userLabel: interventionData.prediction_label,
                     dismissed: true,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+            } catch (e) {
+                console.error("Failed to disable always-on-top after dismiss:", e);
+            }
         } catch (e) {
             console.error('intervention_update failed:', e);
         }
@@ -140,9 +161,10 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
 
     const handleConfirmCorrection = async () => {
         if (!intervention) return;
-        if (!intervention.suggested_activity || 
-            !intervention.suggested_duration || 
-            !intervention.preference_id) {
+        const interventionData = intervention;
+        if (!interventionData.suggested_activity || 
+            !interventionData.suggested_duration || 
+            !interventionData.preference_id) {
             // No activity available, just dismiss
             setIsVisible(false);
             return;
@@ -153,27 +175,35 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
                     userLabel: selectedLabel,
                     dismissed: false,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
             if (isStillBadState) {
                 const sessionId = await invoke<number>('break_start', {
-                    interventionId: intervention.intervention_id,
-                    activity: intervention.suggested_activity,
-                    plannedDurationMins: intervention.suggested_duration,
-                    preferenceId: intervention.preference_id,
+                    interventionId: interventionData.intervention_id,
+                    activity: interventionData.suggested_activity,
+                    plannedDurationMins: interventionData.suggested_duration,
+                    preferenceId: interventionData.preference_id,
                 });
-                onBreakStart({
-                    activity: intervention.suggested_activity,
-                    duration: intervention.suggested_duration,
-                    preference_id: intervention.preference_id,
-                    intervention_id: intervention.intervention_id,
-                    break_session_id: sessionId,
+                await invoke('open_break_window', {
+                    activity: interventionData.suggested_activity,
+                    duration: interventionData.suggested_duration,
+                    breakSessionId: sessionId,
+                    interventionId: interventionData.intervention_id,
                 });
+                try {
+                    const appWindow = getCurrentWindow();
+                    await appWindow.setAlwaysOnTop(false);
+                    if (appWindow.label !== "main") {
+                        await appWindow.hide();
+                    }
+                } catch (e) {
+                    console.error("Failed to disable always-on-top after break start:", e);
+                }
             }
         } catch (e) {
             console.error('correction failed:', e);

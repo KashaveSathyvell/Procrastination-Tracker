@@ -2,6 +2,7 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::mpsc::Sender;
 use std::time::{UNIX_EPOCH};
+use std::sync::{Mutex, OnceLock};
 use rdev::{listen, Event, EventType};
 use active_win_pos_rs::get_active_window;
 use chrono::{DateTime};
@@ -9,23 +10,43 @@ use tauri::State;
 use crate::models::models::OnBreak;
 use crate::models::table_structs::Input;
 
+static LAST_WINDOW: OnceLock<Mutex<String>> = OnceLock::new();
+static LAST_ON_BREAK_STATE: OnceLock<Mutex<Option<bool>>> = OnceLock::new();
+
 
 pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_break: &Arc<AtomicBool>) {
-
     if !running.load(Ordering::Relaxed) {
         return;
     }
 
-    if on_break.load(Ordering::SeqCst) {
+    let is_on_break = on_break.load(Ordering::SeqCst);
+    if let Ok(mut last_state) = LAST_ON_BREAK_STATE.get_or_init(|| Mutex::new(None)).lock() {
+        if last_state.map(|state| state != is_on_break).unwrap_or(true) {
+            println!("On Break state is {}", is_on_break);
+            *last_state = Some(is_on_break);
+        }
+    }
+
+    if is_on_break {
         return;
     }
 
 
     let sys_time = event.time;
-    let difference = sys_time.duration_since(UNIX_EPOCH).unwrap().as_secs();
+    let difference = match sys_time.duration_since(UNIX_EPOCH) {
+        Ok(d) => d.as_secs(),
+        Err(_) => return,
+    };
 
-    let secs = i64::try_from(difference).unwrap();
-    let dt = DateTime::from_timestamp(secs, 0).unwrap();
+    let secs = match i64::try_from(difference) {
+        Ok(v) => v,
+        Err(_) => return,
+    };
+
+    let dt = match DateTime::from_timestamp(secs, 0) {
+        Some(v) => v,
+        None => return,
+    };
     let timestamp = dt.format("%Y-%m-%d %H:%M:%S");
 
 
@@ -40,13 +61,24 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         _ => ("Unknown", "Unknown", None, None, None, None, None, None)
     };
 
-    let activeWindow = if event_action == "MouseMove" || event_action == "WheelScroll" {
-        String::from("") 
+    let activeWindow = if matches!(event.event_type, EventType::MouseMove { .. }) {
+        LAST_WINDOW
+            .get_or_init(|| Mutex::new(String::new()))
+            .lock()
+            .unwrap_or_else(|e| e.into_inner())
+            .clone()
+    } else if event_action == "WheelScroll" {
+        String::from("")
     } else {
-        match get_active_window() {
-            Ok(active_window) => active_window.app_name,
-            Err(()) => String::from("Unknown window")
+        let window = get_active_window()
+            .map(|w| w.app_name)
+            .unwrap_or_else(|()| String::from("Unknown window"));
+
+        if let Ok(mut cached) = LAST_WINDOW.get_or_init(|| Mutex::new(String::new())).lock() {
+            *cached = window.clone();
         }
+
+        window
     };
 
 
@@ -63,7 +95,9 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         active_window: activeWindow,
     };
 
-    tx.send(input);//.unwrap();
+    if let Err(error) = tx.send(input) {
+        eprintln!("tx.send failed: {}", error);
+    }
 }
 
 pub fn logging(tx: Sender<Input>, running: Arc<AtomicBool>, on_break: Arc<AtomicBool>) {
