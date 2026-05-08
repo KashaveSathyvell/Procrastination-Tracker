@@ -1,8 +1,8 @@
 .sidebar {
   width: 240px;
   min-height: 100vh;
-  border-right: 1px solid var(--border);
-  background: var(--bg-surface);
+  border-right: 1px solid var(--border-card);
+  background: var(--bg-sidebar);
   display: flex;
   flex-direction: column;
   padding: 16px 12px;
@@ -38,7 +38,7 @@
   border-left: 2px solid transparent;
   border-radius: 8px;
   background: transparent;
-  color: var(--text-secondary);
+  color: var(--text-primary);
   display: flex;
   align-items: center;
   gap: 12px;
@@ -49,13 +49,13 @@
 
 .sidebar-nav-item:hover,
 .sidebar-theme-btn:hover {
-  background: var(--bg-elevated);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
   color: var(--text-primary);
 }
 
 .sidebar-nav-item.active {
   border-left-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 10%, transparent);
+  background: var(--accent-active-bg);
   color: var(--text-primary);
 }
 

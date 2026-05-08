@@ -1,14 +1,13 @@
-import { listen } from "@tauri-apps/api/event";
 import { useEffect, useMemo, useState } from "react";
 import { StartStopButton } from "../StartStopButton";
+import type { PredictionItem } from "../../App";
 import "./Pages.css";
 
-type PredictionPayload = {
-  prediction_id: number;
-  feature_vector_id: number;
-  prediction_label: "Focused" | "At Risk" | "Procrastinating" | "Idle";
-  confidence: number;
-  timestamp: number;
+type DashboardProps = {
+  predictions: PredictionItem[];
+  totalPredictions: number;
+  isMonitoring: boolean;
+  onMonitoringChange: (active: boolean) => void;
 };
 
 const getStateClass = (label: string) => {
@@ -18,28 +17,36 @@ const getStateClass = (label: string) => {
   return "state-idle";
 };
 
-const formatTime = (timestamp: number) =>
-  new Date(timestamp).toLocaleTimeString("en-GB", { hour12: false });
+const formatTime = (timestamp: number) => {
+  const date = new Date(timestamp);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
 
-export const Dashboard = () => {
-  const [predictions, setPredictions] = useState<PredictionPayload[]>([]);
+  const dateKey = date.toDateString();
+  const todayKey = now.toDateString();
+  const yesterdayKey = yesterday.toDateString();
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const timePart = `${hh}:${mm}`;
+
+  if (dateKey === todayKey) return `Today ${timePart}`;
+  if (dateKey === yesterdayKey) return `Yesterday ${timePart}`;
+
+  const month = date.toLocaleString("en-US", { month: "short" });
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${month} ${day}, ${timePart}`;
+};
+
+export const Dashboard = ({ predictions, totalPredictions, isMonitoring, onMonitoringChange }: DashboardProps) => {
   const [pulseDot, setPulseDot] = useState(false);
 
   useEffect(() => {
-    const setupListener = async () => {
-      const unlisten = await listen<PredictionPayload>("new_prediction", (event) => {
-        setPredictions((prev) => [event.payload, ...prev].slice(0, 10));
-        setPulseDot(true);
-        setTimeout(() => setPulseDot(false), 300);
-      });
-      return unlisten;
-    };
-
-    const unlistenFn = setupListener();
-    return () => {
-      unlistenFn.then((fn) => fn());
-    };
-  }, []);
+    if (predictions.length === 0) return;
+    setPulseDot(true);
+    const timer = setTimeout(() => setPulseDot(false), 300);
+    return () => clearTimeout(timer);
+  }, [predictions]);
 
   const currentPrediction = predictions[0];
   const averageConfidence = useMemo(() => {
@@ -90,11 +97,11 @@ export const Dashboard = () => {
       <section className="card monitoring-card">
         <div className="monitoring-header">
           <h3 className="section-title">Monitoring</h3>
-          <span className={`pill ${predictions.length > 0 ? "state-focused" : "state-idle"}`}>
-            {predictions.length > 0 ? "Active" : "Inactive"}
+          <span className={`pill ${isMonitoring ? "state-focused" : "state-idle"}`}>
+            {isMonitoring ? "Active" : "Inactive"}
           </span>
         </div>
-        <StartStopButton />
+        <StartStopButton isMonitoring={isMonitoring} onMonitoringChange={onMonitoringChange} />
       </section>
 
       <section className="card">
@@ -125,7 +132,7 @@ export const Dashboard = () => {
         </div>
         <div className="metric-card">
           <p className="metric-label">Total Predictions</p>
-          <p className="metric-value">{predictions.length}</p>
+          <p className="metric-value">{totalPredictions}</p>
         </div>
       </section>
     </div>

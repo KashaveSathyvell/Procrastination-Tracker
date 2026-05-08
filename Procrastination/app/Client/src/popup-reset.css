@@ -1,0 +1,14 @@
+html,
+body,
+#root {
+    margin: 0;
+    padding: 0;
+    overflow: hidden;
+    background: transparent;
+}
+
+.popup-overlay,
+.focus-popup-overlay,
+.idle-popup-overlay {
+    background: transparent;
+}

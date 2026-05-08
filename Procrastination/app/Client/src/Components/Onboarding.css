@@ -10,7 +10,7 @@
 
 .ob-card {
     background-color: var(--bg-surface);
-    border: 1px solid var(--border);
+    border: 1px solid var(--border-card);
     border-radius: 12px;
     padding: 2.5rem;
     width: 100%;
@@ -130,7 +130,7 @@
     border-radius: 8px;
     border: 1px solid var(--accent);
     background-color: var(--accent);
-    color: var(--text-primary);
+    color: #ffffff;
     cursor: pointer;
     transition: background-color 150ms ease, color 150ms ease;
     box-shadow: none;

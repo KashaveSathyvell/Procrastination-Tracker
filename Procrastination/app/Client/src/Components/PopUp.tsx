@@ -4,44 +4,55 @@ import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useState } from 'react';
 import './PopUp.css';
 
+import { getCurrentWindow } from "@tauri-apps/api/window";
+
 type InterventionPackage = {
     intervention_id: number,
     timestamp: number,
     intervention_type: string,
     prediction_label: string,
     confidence: number,
-    suggested_activity: string,
-    suggested_duration: number,
-    preference_id: number,
+    suggested_activity: string | null,
+    suggested_duration: number | null,
+    preference_id: number | null,
 }
 
 export type BreakData = {
-    activity: string,
-    duration: number,
-    preference_id: number,
+    activity: string | null,
+    duration: number | null,
+    preference_id: number | null,
     intervention_id: number,
     break_session_id: number,
 }
 
 const LABELS = ["Focused", "At Risk", "Procrastinating", "Idle"];
 
-type PopUpProps = {
-    onBreakStart: (data: BreakData) => void,
-}
-
-export const PopUp = ({ onBreakStart }: PopUpProps) => {
+export const PopUp = () => {
     const [intervention, setIntervention] = useState<InterventionPackage | null>(null);
     const [isVisible, setIsVisible] = useState(false);
     const [showCorrection, setShowCorrection] = useState(false);
     const [selectedLabel, setSelectedLabel] = useState<string>("");
 
+    // const appWindow = getCurrentWindow();
+
+    // await appWindow.setAlwaysOnTop(true);
+    // await appWindow.setFocus();
+
     useEffect(() => {
         const setupListener = async () => {
-            const unlisten = await listen<InterventionPackage>('new_intervention', (event) => {
+            const unlisten = await listen<InterventionPackage>('new_intervention', async (event) => {
                 setIntervention(event.payload);
                 setSelectedLabel(event.payload.prediction_label);
                 setShowCorrection(false);
                 setIsVisible(true);
+
+                try {
+                    const appWindow = getCurrentWindow();
+                    await appWindow.setAlwaysOnTop(true);
+                    await appWindow.setFocus();
+                } catch (e) {
+                    console.error("Failed to set window to top:", e);
+                }
             });
             return unlisten;
         };
@@ -50,56 +61,99 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
         return () => { unlistenFn.then(fn => fn()); };
     }, []);
 
-    const close = () => {
+    const close = async () => {
         setIsVisible(false);
         setIntervention(null);
         setShowCorrection(false);
+
+        try {
+            const { getCurrentWindow } = await import("@tauri-apps/api/window");
+            const win = getCurrentWindow();
+            if (win.label === "main") return;
+            await win.hide();
+        } catch (e) {
+            console.error("Failed to hide popup window:", e);
+        }
     };
 
     const handleTakeBreak = async () => {
         if (!intervention) return;
-        close();
+        const interventionData = intervention;
+        if (!interventionData.suggested_activity || 
+            !interventionData.suggested_duration || 
+            !interventionData.preference_id) {
+            // No activity available, just dismiss
+            await close();
+            return;
+        }
+
+        await close();
+
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
-                    userLabel: intervention.prediction_label,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
+                    userLabel: interventionData.prediction_label,
                     dismissed: false,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
             const sessionId = await invoke<number>('break_start', {
-                interventionId: intervention.intervention_id,
-                activity: intervention.suggested_activity,
-                plannedDurationMins: intervention.suggested_duration,
-                preferenceId: intervention.preference_id,
+                interventionId: interventionData.intervention_id,
+                activity: interventionData.suggested_activity,
+                plannedDurationMins: interventionData.suggested_duration,
+                preferenceId: interventionData.preference_id,
             });
-            onBreakStart({
-                activity: intervention.suggested_activity,
-                duration: intervention.suggested_duration,
-                preference_id: intervention.preference_id,
-                intervention_id: intervention.intervention_id,
-                break_session_id: sessionId,
+            await invoke('open_break_window', {
+                activity: interventionData.suggested_activity,
+                duration: interventionData.suggested_duration,
+                breakSessionId: sessionId,
+                interventionId: interventionData.intervention_id,
             });
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+            } catch (e) {
+                console.error("Failed to disable always-on-top after break start:", e);
+            }
         } catch (e) {
             console.error('start_break failed:', e);
+            setIntervention(interventionData);
+            setSelectedLabel(interventionData.prediction_label);
+            setShowCorrection(false);
+            setIsVisible(true);
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.show();
+                await appWindow.setAlwaysOnTop(true);
+                await appWindow.setFocus();
+            } catch (showError) {
+                console.error("Failed to restore popup window after start break failure:", showError);
+            }
         }
     };
 
     const handleDismiss = async () => {
         if (!intervention) return;
+        const interventionData = intervention;
         close();
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
-                    userLabel: intervention.prediction_label,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
+                    userLabel: interventionData.prediction_label,
                     dismissed: true,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+            } catch (e) {
+                console.error("Failed to disable always-on-top after dismiss:", e);
+            }
         } catch (e) {
             console.error('intervention_update failed:', e);
         }
@@ -107,32 +161,49 @@ export const PopUp = ({ onBreakStart }: PopUpProps) => {
 
     const handleConfirmCorrection = async () => {
         if (!intervention) return;
+        const interventionData = intervention;
+        if (!interventionData.suggested_activity || 
+            !interventionData.suggested_duration || 
+            !interventionData.preference_id) {
+            // No activity available, just dismiss
+            setIsVisible(false);
+            return;
+        }
+        // If user corrects to a still-bad state, we still suggest a break
         const isStillBadState = selectedLabel === "At Risk" || selectedLabel === "Procrastinating";
         close();
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
-                    timestamp: intervention.timestamp,
-                    interventionId: intervention.intervention_id,
+                    timestamp: interventionData.timestamp,
+                    interventionId: interventionData.intervention_id,
                     userLabel: selectedLabel,
                     dismissed: false,
-                    predictedLabel: intervention.prediction_label,
+                    predictedLabel: interventionData.prediction_label,
                 },
             });
             if (isStillBadState) {
                 const sessionId = await invoke<number>('break_start', {
-                    interventionId: intervention.intervention_id,
-                    activity: intervention.suggested_activity,
-                    plannedDurationMins: intervention.suggested_duration,
-                    preferenceId: intervention.preference_id,
+                    interventionId: interventionData.intervention_id,
+                    activity: interventionData.suggested_activity,
+                    plannedDurationMins: interventionData.suggested_duration,
+                    preferenceId: interventionData.preference_id,
                 });
-                onBreakStart({
-                    activity: intervention.suggested_activity,
-                    duration: intervention.suggested_duration,
-                    preference_id: intervention.preference_id,
-                    intervention_id: intervention.intervention_id,
-                    break_session_id: sessionId,
+                await invoke('open_break_window', {
+                    activity: interventionData.suggested_activity,
+                    duration: interventionData.suggested_duration,
+                    breakSessionId: sessionId,
+                    interventionId: interventionData.intervention_id,
                 });
+                try {
+                    const appWindow = getCurrentWindow();
+                    await appWindow.setAlwaysOnTop(false);
+                    if (appWindow.label !== "main") {
+                        await appWindow.hide();
+                    }
+                } catch (e) {
+                    console.error("Failed to disable always-on-top after break start:", e);
+                }
             }
         } catch (e) {
             console.error('correction failed:', e);

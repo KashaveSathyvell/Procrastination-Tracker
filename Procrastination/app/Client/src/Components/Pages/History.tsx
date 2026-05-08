@@ -1,7 +1,18 @@
-import { useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
+import { useEffect, useMemo, useState } from "react";
 import "./Pages.css";
 
 type FilterKey = "All" | "Focused" | "At Risk" | "Procrastinating" | "Idle";
+type RangeKey = "today" | "week" | "month";
+
+type HistoryRowPayload = {
+  prediction_id: number;
+  timestamp: number;
+  predicted_state: string;
+  confidence: number;
+  was_corrected: boolean;
+  user_label: string | null;
+};
 
 const getStateClass = (label: string) => {
   if (label === "Focused") return "state-focused";
@@ -10,19 +21,62 @@ const getStateClass = (label: string) => {
   return "state-idle";
 };
 
+const rangeKeyToDays: Record<RangeKey, number> = {
+  today: 1,
+  week: 7,
+  month: 30,
+};
+
+const formatTimestamp = (unixSeconds: number) => {
+  const date = new Date(unixSeconds * 1000);
+  const now = new Date();
+  const yesterday = new Date(now);
+  yesterday.setDate(now.getDate() - 1);
+
+  const dateKey = date.toDateString();
+  const todayKey = now.toDateString();
+  const yesterdayKey = yesterday.toDateString();
+  const hh = String(date.getHours()).padStart(2, "0");
+  const mm = String(date.getMinutes()).padStart(2, "0");
+  const timePart = `${hh}:${mm}`;
+
+  if (dateKey === todayKey) return `Today ${timePart}`;
+  if (dateKey === yesterdayKey) return `Yesterday ${timePart}`;
+
+  const month = date.toLocaleString("en-US", { month: "short" });
+  const day = String(date.getDate()).padStart(2, "0");
+  return `${month} ${day}, ${timePart}`;
+};
+
 export const History = () => {
   const [filter, setFilter] = useState<FilterKey>("All");
+  const [range, setRange] = useState<RangeKey>("today");
+  const rangeDays = rangeKeyToDays[range];
 
-  // TODO: Replace mock history entries with paginated prediction history from a future Tauri command.
-  const historyRows = [
-    { timestamp: "14:01:22", state: "Focused", confidence: 91, corrected: "No" },
-    { timestamp: "13:58:10", state: "At Risk", confidence: 74, corrected: "Yes" },
-    { timestamp: "13:51:43", state: "Procrastinating", confidence: 82, corrected: "No" },
-    { timestamp: "13:43:07", state: "Idle", confidence: 69, corrected: "No" },
-    { timestamp: "13:39:55", state: "Focused", confidence: 88, corrected: "No" },
-    { timestamp: "13:31:01", state: "At Risk", confidence: 70, corrected: "Yes" },
-    { timestamp: "13:25:16", state: "Focused", confidence: 86, corrected: "No" },
-  ];
+  const [rows, setRows] = useState<HistoryRowPayload[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  const stateFilter = useMemo(() => (filter === "All" ? null : filter), [filter]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    setLoading(true);
+    invoke<HistoryRowPayload[]>("get_history", { rangeDays, stateFilter })
+      .then((data) => {
+        if (!cancelled) setRows(Array.isArray(data) ? data.slice(0, 100) : []);
+      })
+      .catch(() => {
+        if (!cancelled) setRows([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, [rangeDays, stateFilter]);
 
   return (
     <div className="page-shell">
@@ -30,6 +84,22 @@ export const History = () => {
         <h1 className="page-title">History</h1>
         <p className="page-subtitle">Recent prediction events and correction status.</p>
       </header>
+
+      <section className="card range-toggle">
+        {[
+          { key: "today", label: "Today" },
+          { key: "week", label: "This Week" },
+          { key: "month", label: "This Month" },
+        ].map((item) => (
+          <button
+            key={item.key}
+            className={`pill-toggle ${range === item.key ? "active" : ""}`}
+            onClick={() => setRange(item.key as RangeKey)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </section>
 
       <section className="card filter-row">
         {(["All", "Focused", "At Risk", "Procrastinating", "Idle"] as FilterKey[]).map((item) => (
@@ -48,18 +118,35 @@ export const History = () => {
           <span>Timestamp</span>
           <span>Predicted State</span>
           <span>Confidence</span>
-          <span>Corrected</span>
+          <span>Correction</span>
         </div>
-        <div className="history-list">
-          {historyRows.map((row) => (
-            <div key={`${row.timestamp}-${row.state}`} className="history-row">
-              <span>{row.timestamp}</span>
-              <span className={`badge ${getStateClass(row.state)}`}>{row.state}</span>
-              <span>{row.confidence}%</span>
-              <span className={`badge ${row.corrected === "Yes" ? "state-at-risk" : "state-idle"}`}>{row.corrected}</span>
-            </div>
-          ))}
-        </div>
+        {loading ? (
+          <div className="history-loading" aria-hidden="true">
+            <span className="analytics-loading-dots">Loading</span>
+          </div>
+        ) : rows.length === 0 ? (
+          <p className="history-empty-message status-secondary">No predictions found for this period.</p>
+        ) : (
+          <div className="history-list">
+            {rows.map((row) => (
+              <div key={row.prediction_id} className="history-row">
+                <span>{formatTimestamp(row.timestamp)}</span>
+                <span className={`badge ${getStateClass(row.predicted_state)}`}>{row.predicted_state}</span>
+                <span>{Math.round(Math.min(1, Math.max(0, row.confidence)) * 100)}%</span>
+                <div className="history-feedback-cell">
+                  <span
+                    className={`history-correction-badge ${row.was_corrected ? "history-correction-badge--warn" : "history-correction-badge--ok"}`}
+                  >
+                    {row.was_corrected ? "Corrected" : "Accurate"}
+                  </span>
+                  {row.user_label != null && row.user_label !== "" && (
+                    <span className="history-user-label-pill">→ {row.user_label}</span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
       </section>
     </div>
   );

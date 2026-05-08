@@ -63,12 +63,13 @@ impl PathsConfig {
         let app_dir = base_dir.join("ProcrastinationAI");
 
         let database_path = app_dir.join("behavior.db");
-        let model_path = app_dir.join("model.onnx");
+        let model_path = app_dir.join("model/current_model.onnx");
         let logs_dir = app_dir.join("logs");
 
         // Ensure directories exist
         std::fs::create_dir_all(&logs_dir).expect("Failed to create logs directory");
         std::fs::create_dir_all(&app_dir).expect("Failed to create app directory");
+        std::fs::create_dir_all(&app_dir.join("model")).expect("Failed to create model directory");
 
         Self {
             app_data_dir: app_dir,

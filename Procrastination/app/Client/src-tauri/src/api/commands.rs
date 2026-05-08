@@ -1,27 +1,30 @@
 use std::sync::mpsc::{Sender, Receiver, TryRecvError};
 use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::{Duration, SystemTime};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::path::Path;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::thread::Thread;
 use chrono::Utc;
 use ndarray::AssignElem;
 use ort::editor::Model;
+use rusqlite::params;
+use rusqlite::Connection;
 use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::async_runtime::handle;
 use tauri::AppHandle;
 
 use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before};
+use crate::database::sqlite::{initialize_database, insert_events, insert_events_conn, update_user_label, get_ids, prediction_corrected, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration};
 use crate::features::feature_extractor::run_extractor;
-use tauri::{Manager, State};
+use crate::PendingBreakData;
+use tauri::{Emitter, Manager, State};
 use tauri::WebviewUrl::App;
 use crate::config::AppConfig;
 use crate::models::table_structs::{BreakSessions, Input, UserPreferences};
-use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage};
+use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage, RetrainingStats, RetrainingResult, StateDistribution, FocusScore, PredictionHistoryRow, ActivityScore, StreakSettings, BreakInitData};
 use crate::intervention::activity::break_activities;
-
+use crate::ml::inference::load_model;
 
 #[tauri::command]
 pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_state: State<ModelState>, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<(), String> {
@@ -56,9 +59,80 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
 
 
     let handle2 = thread::spawn(move || {
+        const BATCH_SIZE: usize = 500;
+        let mut conn = match Connection::open(&db_path1) {
+            Ok(c) => c,
+            Err(e) => {
+                eprintln!("Failed to open DB connection \n                     in writer thread: {}", e);
+                return;
+            }
+        };
+        if let Err(e) = conn.execute_batch(
+            "PRAGMA foreign_keys = ON;
+             PRAGMA journal_mode = WAL;
+             PRAGMA busy_timeout = 5000;") {
+            eprintln!("Failed to set pragmas: {}", e);
+        }
+        let mut batch: Vec<Input> = Vec::with_capacity(BATCH_SIZE);
         while running_clone2.load(Ordering::Relaxed) {
             match rx.try_recv() {
-                Ok(received) => { insert_events(&db_path1, &received); }
+                Ok(received) => {
+                    batch.push(received);
+
+                    while batch.len() < BATCH_SIZE {
+                        match rx.try_recv() {
+                            Ok(next) => batch.push(next),
+                            Err(TryRecvError::Empty) => break,
+                            Err(TryRecvError::Disconnected) => break,
+                        }
+                    }
+
+                    let tx = match conn.transaction() {
+                        Ok(t) => t,
+                        Err(e) => {
+                            eprintln!("Failed to start batch transaction: {}", e);
+                            batch.clear();
+                            continue;
+                        }
+                    };
+
+                    let mut stmt = match tx.prepare(
+                        "INSERT INTO input_events(timestamp, event_type, \
+                         event_action, key_code, mouse_x, mouse_y, \
+                         wheel_x, wheel_y, button, active_window) \
+                         Values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)"
+                    ) {
+                        Ok(s) => s,
+                        Err(e) => {
+                            eprintln!("Failed to prepare batch insert statement: {}", e);
+                            batch.clear();
+                            continue;
+                        }
+                    };
+
+                    for input in &batch {
+                        if let Err(e) = stmt.execute(params![
+                            input.timestamp,
+                            input.event_type,
+                            input.event_action,
+                            input.key_code.as_deref(),
+                            input.mouse_x,
+                            input.mouse_y,
+                            input.wheel_x,
+                            input.wheel_y,
+                            input.button.as_deref(),
+                            input.active_window
+                        ]) {
+                            eprintln!("insert_events batch row failed: {}", e);
+                        }
+                    }
+
+                    drop(stmt);
+                    if let Err(e) = tx.commit() {
+                        eprintln!("Failed to commit event batch: {}", e);
+                    }
+                    batch.clear();
+                }
                 Err(TryRecvError::Empty) => { thread::sleep(Duration::from_millis(10)) }
                 _ => {}
             }
@@ -94,6 +168,18 @@ pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Resul
     
     println!("Stopping threads");
     Ok(())
+}
+
+
+#[tauri::command]
+pub fn get_recent_predictions(config: State<AppConfig>) -> Result<Vec<PredictionHistoryRow>, String> {
+    crate::database::sqlite::get_recent_predictions(&config.paths.database_path, 10)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_total_predictions_today(config: State<AppConfig>) -> Result<i64, String> {
+    get_predictions_count_today(&config.paths.database_path).map_err(|e| e.to_string())
 }
 
 
@@ -162,12 +248,93 @@ pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<Ap
     on_break.break_ended.store(true, Ordering::SeqCst);
     let end_time = Utc::now().timestamp();
 
-    println!("Break ended: session {}, on time: {}", end_break.break_session_id, end_break.returned_on_time);
+    let (start_ts, planned_mins) = get_break_plan(&config.paths.database_path, end_break.break_session_id)
+        .map_err(|e| e.to_string())?;
+    let planned_end_ts = start_ts + (planned_mins * 60);
+    let returned_on_time = end_time <= planned_end_ts;
+
+    println!("Break ended: session {}, on time: {}", end_break.break_session_id, returned_on_time);
     let mut current_break_id = on_break.break_id.lock().unwrap();
     *current_break_id = Some(end_break.break_session_id);
 
-    update_break(&config.paths.database_path, end_break, end_time).expect("TODO: panic message");
+    update_break(
+        &config.paths.database_path,
+        EndBreak { break_session_id: end_break.break_session_id, returned_on_time },
+        end_time
+    ).expect("TODO: panic message");
 
+    Ok(())
+}
+
+#[tauri::command]
+pub fn extend_break(break_session_id: i64, extra_minutes: i64, config: State<AppConfig>) -> Result<(), String> {
+    if extra_minutes <= 0 {
+        return Err("extra_minutes must be > 0".to_string());
+    }
+    extend_break_planned_duration(&config.paths.database_path, break_session_id, extra_minutes)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn open_break_window(
+    app_handle: AppHandle,
+    activity: String,
+    duration: i64,
+    break_session_id: i64,
+    intervention_id: i64,
+) -> Result<(), String> {
+    use tauri::WebviewUrl;
+    use tauri::WebviewWindowBuilder;
+
+    let init_data = BreakInitData {
+        activity,
+        duration,
+        break_session_id,
+        intervention_id,
+    };
+
+    let pending_state = app_handle.state::<PendingBreakData>();
+    {
+        let mut slot = pending_state.data.lock().map_err(|e| e.to_string())?;
+        *slot = Some(init_data.clone());
+    }
+
+    println!("Opening break window from configured app window");
+    if let Some(window) = app_handle.get_webview_window("break") {
+        let _ = window.unminimize();
+        let _ = window.center();
+        window.show().map_err(|e| e.to_string())?;
+        let _ = window.set_focus();
+        let _ = app_handle.emit_to("break", "break_init_data", init_data);
+        return Ok(());
+    }
+
+    let break_url = tauri::WebviewUrl::App("break.html".into());
+    let _window = WebviewWindowBuilder::new(&app_handle, "break", break_url)
+        .title("Break Time")
+        .inner_size(380.0, 280.0)
+        .resizable(false)
+        .center()
+        .always_on_top(false)
+        .skip_taskbar(false)
+        .build()
+        .map_err(|e| e.to_string())?;
+    let _ = app_handle.emit_to("break", "break_init_data", init_data);
+
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_break_init_data(pending: State<PendingBreakData>) -> Result<Option<BreakInitData>, String> {
+    let mut data = pending.data.lock().map_err(|e| e.to_string())?;
+    Ok(data.take())
+}
+
+#[tauri::command]
+pub fn close_break_window(app_handle: AppHandle) -> Result<(), String> {
+    if let Some(window) = app_handle.get_webview_window("break") {
+        window.close().map_err(|e| e.to_string())?;
+    }
     Ok(())
 }
 
@@ -202,9 +369,181 @@ pub fn save_user_activity(config: State<AppConfig>, chosen_list: Vec<String>) ->
 }
 
 #[tauri::command]
+pub fn get_saved_activities(config: State<AppConfig>) -> Result<Vec<String>, String> {
+    get_user_saved_activities(&config.paths.database_path)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn delete_activity(activity_name: String, config: State<AppConfig>) -> Result<(), String> {
+    delete_user_preference(&config.paths.database_path, activity_name).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_activity_scores(config: State<AppConfig>) -> Result<Vec<ActivityScore>, String> {
+    crate::database::sqlite::get_activity_scores(&config.paths.database_path)
+        .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
 pub fn update_label_streak(config: State<AppConfig>, state_confirmation: IdleFocusedPackage) -> Result<(), String> {
 
     update_n_windows_before(&config.paths.database_path, state_confirmation).map_err(|err| err.to_string())?;
 
     Ok(())
+}
+
+
+#[tauri::command]
+pub fn get_streak_settings(config: State<AppConfig>) -> Result<StreakSettings, String> {
+    let value = get_setting(&config.paths.database_path, "focused_streak_window")
+        .map_err(|e| e.to_string())?;
+
+    let focused_streak_window = value.and_then(|v| v.parse::<i64>().ok()).unwrap_or(15);
+
+    Ok(StreakSettings { focused_streak_window })
+}
+
+#[tauri::command]
+pub fn save_streak_settings(settings: StreakSettings, config: State<AppConfig>) -> Result<(), String> {
+    save_setting(&config.paths.database_path, "focused_streak_window", &settings.focused_streak_window.to_string())
+        .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
+pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingStats, String> {
+    let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path)
+        .map_err(|e| e.to_string())?;
+
+    let retraining_needed = correction_rate > 0.25 && labelled_count >= 50;
+
+    println!(
+        "Retraining check — correction rate: {:.2}%, labelled rows: {}, needed: {}",
+        correction_rate * 100.0,
+        labelled_count,
+        retraining_needed
+    );
+
+    Ok(RetrainingStats {
+        correction_rate,
+        labelled_count,
+        retraining_needed,
+    })
+}
+
+
+
+#[tauri::command]
+pub fn trigger_retraining(
+    config: State<AppConfig>,
+    model_state: State<ModelState>,
+) -> Result<RetrainingResult, String> {
+    let db_path = config.paths.database_path.to_str()
+        .ok_or("Invalid database path")?
+        .to_string();
+
+    let model_output_path = config.paths.model_path.to_str()
+        .ok_or("Invalid model path")?
+        .to_string();
+
+    // Resolve the path to retrain.py relative to the project
+    // During development this works; for production we use sidecar (see below)
+    let script_path = std::path::Path::new("../../../ml/retrain.py");
+
+    println!("Triggering retraining...");
+    println!("DB path: {}", db_path);
+    println!("Model output: {}", model_output_path);
+
+    let output = std::process::Command::new("python")
+        .arg(script_path)
+        .arg(&db_path)
+        .arg(&model_output_path)
+        .output()
+        .map_err(|e| format!("Failed to spawn Python process: {}", e))?;
+
+    // Print Python stdout/stderr to Rust console for debugging
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    println!("Python stdout:\n{}", stdout);
+    if !stderr.is_empty() {
+        println!("Python stderr:\n{}", stderr);
+    }
+
+    if !output.status.success() {
+        return Ok(RetrainingResult {
+            success: false,
+            message: format!("Retraining failed: {}", stderr),
+        });
+    }
+
+    // Reload the model from the new path
+    println!("Reloading model from: {}", model_output_path);
+    let new_session = load_model(std::path::PathBuf::from(&model_output_path))
+        .map_err(|e| format!("Failed to load retrained model: {}", e))?;
+
+    {
+        let mut session_guard = model_state.session.lock()
+            .map_err(|e| format!("Failed to lock model session: {}", e))?;
+        *session_guard = new_session;
+        println!("Model session replaced successfully");
+    }
+
+    // Clean up old input events
+    clear_old_events(&config.paths.database_path)
+        .map_err(|e| format!("Failed to clear old events: {}", e))?;
+
+    Ok(RetrainingResult {
+        success: true,
+        message: "Model retrained successfully and loaded. Old input events cleared.".to_string(),
+    })
+}
+
+
+
+
+
+//analyticsn  history
+#[tauri::command]
+pub fn get_analytics_stats(
+    range_days: i64,
+    config: State<AppConfig>
+) -> Result<StateDistribution, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_prediction_stats(&config.paths.database_path, since)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_analytics_focus_score(
+    range_days: i64,
+    config: State<AppConfig>
+) -> Result<FocusScore, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_focus_score(&config.paths.database_path, since)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn get_history(
+    range_days: i64,
+    state_filter: Option<String>,
+    config: State<AppConfig>
+) -> Result<Vec<PredictionHistoryRow>, String> {
+    let since = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+
+    get_prediction_history(&config.paths.database_path, since, state_filter, 100)
+        .map_err(|e| e.to_string())
 }

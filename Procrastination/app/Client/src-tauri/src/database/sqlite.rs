@@ -1,14 +1,23 @@
 // src-tauri/src/database/sqlite.rs
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
+use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::menu::NativeIcon::User;
-use crate::models::models::{EndBreak, IdleFocusedPackage, PreferenceUpdate, UpdateIntervention};
+use crate::models::models::{ActivityScore, EndBreak, FocusScore, IdleFocusedPackage, PredictionHistoryRow, PreferenceUpdate, StateDistribution, UpdateIntervention};
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions, UserPreferences, BreakSessions};
 
-
+fn open_connection(db_path: &Path) -> Result<Connection> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch(
+        "PRAGMA foreign_keys = ON;
+         PRAGMA journal_mode = WAL;
+         PRAGMA busy_timeout = 5000;",
+    )?;
+    Ok(conn)
+}
 
 pub fn initialize_database(db_path: &Path) -> Result<Connection> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute_batch(
         "
@@ -83,6 +92,11 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             FOREIGN KEY(intervention_id) REFERENCES interventions(id)
             FOREIGN KEY(preference_id) REFERENCES user_preferences(id)
         );
+
+        CREATE TABLE IF NOT EXISTS app_settings (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL
+        );
         "
     )?;
 
@@ -92,7 +106,7 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
 
 
 pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO input_events(timestamp, event_type, event_action, key_code, mouse_x, mouse_y, wheel_x, wheel_y, button, active_window) \
@@ -103,8 +117,30 @@ pub fn insert_events(db_path: &Path, input: &Input) -> Result<()> {
     Ok(())
 }
 
+pub fn insert_events_conn(conn: &Connection, input: &Input) -> Result<()> {
+    conn.execute(
+        "INSERT INTO input_events(timestamp, event_type, \
+         event_action, key_code, mouse_x, mouse_y, \
+         wheel_x, wheel_y, button, active_window) \
+         Values (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
+        params![
+            input.timestamp,
+            input.event_type,
+            input.event_action,
+            input.key_code.as_deref(),
+            input.mouse_x,
+            input.mouse_y,
+            input.wheel_x,
+            input.wheel_y,
+            input.button.as_deref(),
+            input.active_window
+        ],
+    )?;
+    Ok(())
+}
+
 pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64)> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency) \
@@ -119,7 +155,7 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64
 }
 
 pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(i64)> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO predictions(feature_vector_id, timestamp, predicted_state, confidence, window_size_seconds, was_corrected) \
@@ -133,7 +169,7 @@ pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(
 }
 
 pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<(i64)> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO interventions(predictions_id, timestamp, intervention_type, prediction_label, user_label, dismissed)\
@@ -146,7 +182,7 @@ pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Re
 }
 
 pub fn insert_user_preference(db_path: &Path, preference: &UserPreferences) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO user_preferences(activity_name, min_duration_minutes, max_duration_minutes, times_suggested, times_completed, average_focus_score, last_suggested) \
@@ -158,7 +194,7 @@ pub fn insert_user_preference(db_path: &Path, preference: &UserPreferences) -> R
 }
 
 pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<(i64)> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "INSERT INTO break_sessions(intervention_id, start_timestamp, end_timestamp, preference_id, activity, planned_duration_minutes, returned_on_time, post_break_focus_score) \
@@ -172,7 +208,7 @@ pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> 
 }
 
 pub fn update_break(db_path: &Path, updated_break: EndBreak, end_time: i64) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute("UPDATE break_sessions \
         SET returned_on_time = ?1, end_timestamp = ?2 \
@@ -183,8 +219,33 @@ pub fn update_break(db_path: &Path, updated_break: EndBreak, end_time: i64) -> R
     Ok(())
 }
 
+pub fn get_break_plan(db_path: &Path, break_session_id: i64) -> Result<(i64, i64)> {
+    let conn = open_connection(db_path)?;
+
+    conn.query_row(
+        "SELECT start_timestamp, planned_duration_minutes
+         FROM break_sessions
+         WHERE id = ?1",
+        params![break_session_id],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )
+}
+
+pub fn extend_break_planned_duration(db_path: &Path, break_session_id: i64, extra_minutes: i64) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "UPDATE break_sessions
+         SET planned_duration_minutes = planned_duration_minutes + ?1
+         WHERE id = ?2",
+        params![extra_minutes, break_session_id],
+    )?;
+
+    Ok(())
+}
+
 pub fn update_user_label(db_path: &Path, updated: &UpdateIntervention) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "UPDATE interventions \
@@ -197,7 +258,7 @@ pub fn update_user_label(db_path: &Path, updated: &UpdateIntervention) -> Result
 }
 
 pub fn prediction_corrected(db_path:&Path, prediction_id: i64, corrected: bool) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute("UPDATE predictions \
     SET was_corrected = ?1 \
@@ -208,7 +269,7 @@ pub fn prediction_corrected(db_path:&Path, prediction_id: i64, corrected: bool) 
 }
 
 pub fn assign_truth_label(db_path: &Path, feature_vector_id: i64, truth_label: String) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute("UPDATE feature_vectors \
     SET truth_label = ?1 \
@@ -219,7 +280,7 @@ pub fn assign_truth_label(db_path: &Path, feature_vector_id: i64, truth_label: S
 }
 
 pub fn get_ids(db_path: &Path, intervention_id: i64) -> Result<(i64, i64)> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.query_row(
         "SELECT predictions.id, predictions.feature_vector_id \
@@ -232,7 +293,7 @@ pub fn get_ids(db_path: &Path, intervention_id: i64) -> Result<(i64, i64)> {
 }
 
 pub fn has_preferences(db_path:&Path) -> Result<i64> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
     
     let total: i64 = conn.query_row("SELECT COUNT(*) FROM user_preferences",
                              params![], |row| row.get(0))?;
@@ -241,7 +302,7 @@ pub fn has_preferences(db_path:&Path) -> Result<i64> {
 }
 
 pub fn get_all_preferences(db_path: &Path) -> Result<Vec<UserPreferences>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     let mut stmt = conn.prepare(
         "SELECT * \
@@ -269,8 +330,81 @@ pub fn get_all_preferences(db_path: &Path) -> Result<Vec<UserPreferences>> {
     Ok(preferences)
 }
 
+
+pub fn get_recent_predictions(db_path: &Path, limit: i64) -> Result<Vec<PredictionHistoryRow>> {
+    let conn = open_connection(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT
+            p.id,
+            p.timestamp,
+            p.predicted_state,
+            p.confidence,
+            p.was_corrected,
+            i.user_label
+         FROM predictions p
+         LEFT JOIN interventions i ON i.predictions_id = p.id
+         ORDER BY p.timestamp DESC
+         LIMIT ?1"
+    )?;
+
+    let rows = stmt.query_map(params![limit], |row| {
+        Ok(PredictionHistoryRow {
+            prediction_id: row.get(0)?,
+            timestamp: row.get(1)?,
+            predicted_state: row.get(2)?,
+            confidence: row.get(3)?,
+            was_corrected: row.get::<_, i64>(4)? != 0,
+            user_label: row.get(5)?,
+        })
+    })?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<PredictionHistoryRow>>();
+
+    Ok(rows)
+}
+
+pub fn get_user_saved_activities(db_path: &Path) -> Result<Vec<String>> {
+    let conn = open_connection(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT activity_name FROM user_preferences ORDER BY id ASC"
+    )?;
+
+    let activities = stmt.query_map(params![], |row| {
+        row.get(0)
+    })?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<String>>();
+
+    Ok(activities)
+}
+
+pub fn get_activity_scores(db_path: &Path) -> Result<Vec<ActivityScore>> {
+    let conn = open_connection(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT activity_name, average_focus_score, times_completed, times_suggested
+         FROM user_preferences
+         ORDER BY average_focus_score DESC"
+    )?;
+
+    let rows = stmt.query_map(params![], |row| {
+        Ok(ActivityScore {
+            activity_name: row.get(0)?,
+            average_focus_score: row.get(1)?,
+            times_completed: row.get(2)?,
+            times_suggested: row.get(3)?,
+        })
+    })?
+        .filter_map(|r| r.ok())
+        .collect::<Vec<ActivityScore>>();
+
+    Ok(rows)
+}
+
 pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpdate) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
     
     conn.execute(
         "UPDATE user_preferences \
@@ -282,8 +416,19 @@ pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpd
     Ok(())
 }
 
+pub fn delete_user_preference(db_path: &Path, activity_name: String) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "DELETE FROM user_preferences WHERE activity_name = ?1",
+        params![activity_name],
+    )?;
+
+    Ok(())
+}
+
 pub fn update_break_focus_score(db_path: &Path, break_id: i64, score: f64) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "UPDATE break_sessions \
@@ -296,7 +441,7 @@ pub fn update_break_focus_score(db_path: &Path, break_id: i64, score: f64) -> Re
 }
 
 pub fn update_pref_focus_score(db_path: &Path, break_session_id: i64, new_score: f64) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     let preference_id: i64 = conn.query_row(
         "SELECT preference_id FROM break_sessions \
@@ -326,7 +471,7 @@ pub fn update_pref_focus_score(db_path: &Path, break_session_id: i64, new_score:
 }
 
 pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Result<Vec<Input>> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     let mut stmt = conn.prepare(
         "SELECT timestamp, event_type, event_action, key_code, mouse_x, mouse_y, wheel_x, wheel_y, button, active_window FROM input_events \
@@ -359,14 +504,14 @@ pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Res
 }
 
 pub fn update_n_windows_before(db_path: &Path, update_package: IdleFocusedPackage) -> Result<()> {
-    let conn = Connection::open(db_path)?;
+    let conn = open_connection(db_path)?;
 
     conn.execute(
         "UPDATE feature_vectors \
         SET truth_label = ?1 \
         WHERE id IN ( \
             SELECT id FROM feature_vectors \
-            WHERE timestamp <= ?2 \
+            WHERE timestamp <= ?2 AND timestamp >= (?2 - (?4 * 60) - 30) \
             AND (truth_label IS NULL OR ?3 = 1) \
             ORDER BY timestamp DESC \
             LIMIT ?4\
@@ -376,3 +521,288 @@ pub fn update_n_windows_before(db_path: &Path, update_package: IdleFocusedPackag
 
     Ok(())
 }
+
+
+
+//for checking if enough for retraining
+pub fn get_retraining_stats(db_path: &Path) -> Result<(f64, i64)> {
+    let conn = open_connection(db_path)?;
+
+    let two_days_ago = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (48 * 60 * 60);
+
+    let total_predictions: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions WHERE timestamp >= ?1",
+        params![two_days_ago],
+        |row| row.get(0)
+    )?;
+
+    let correction_rate = if total_predictions == 0 {
+        0.0
+    } else {
+        let corrected: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM predictions
+             WHERE timestamp >= ?1
+             AND was_corrected = 1",
+            params![two_days_ago],
+            |row| row.get(0)
+        )?;
+        corrected as f64 / total_predictions as f64
+    };
+
+    let labelled_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM feature_vectors
+         WHERE truth_label IS NOT NULL
+         AND truth_label != 'Break'",
+        params![],
+        |row| row.get(0)
+    )?;
+
+    Ok((correction_rate, labelled_count))
+}
+
+
+
+//clear input events after retrainng
+pub fn clear_old_events(db_path: &Path) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    let seven_days_ago = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap()
+        .as_secs() as i64 - (7 * 24 * 60 * 60);
+
+    let deleted = conn.execute(
+        "DELETE FROM input_events WHERE timestamp < ?1",
+        params![seven_days_ago],
+    )?;
+
+    println!("Cleared {} old input_events rows", deleted);
+    Ok(())
+}
+
+
+pub fn get_setting(db_path: &Path, key: &str) -> Result<Option<String>> {
+    let conn = open_connection(db_path)?;
+
+    let result = conn.query_row(
+        "SELECT value FROM app_settings WHERE key = ?1",
+        params![key],
+        |row| row.get(0)
+    );
+
+    match result {
+        Ok(value) => Ok(Some(value)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn save_setting(db_path: &Path, key: &str, value: &str) -> Result<()> {
+    let conn = open_connection(db_path)?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO app_settings(key, value) VALUES(?1, ?2)",
+        params![key, value],
+    )?;
+
+    Ok(())
+}
+
+pub fn get_predictions_count_today(db_path: &Path) -> Result<i64> {
+    let conn = open_connection(db_path)?;
+
+    conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE timestamp >= strftime('%s', 'now', 'localtime', 'start of day')",
+        params![],
+        |row| row.get(0),
+    )
+}
+
+
+//analytics n history
+pub fn get_prediction_stats(db_path: &Path, since_timestamp: i64) -> Result<StateDistribution> {
+    let conn = open_connection(db_path)?;
+
+    // Count each state within the time range
+    let focused: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE predicted_state = 'Focused'
+         AND timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let at_risk: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE predicted_state = 'At Risk'
+         AND timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let procrastinating: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE predicted_state = 'Procrastinating'
+         AND timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let idle: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE predicted_state = 'Idle'
+         AND timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let total = focused + at_risk + procrastinating + idle;
+
+    // Convert to percentages, handle zero total
+    let pct = |count: i64| -> f64 {
+        if total == 0 { 0.0 } else { (count as f64 / total as f64) * 100.0 }
+    };
+
+    Ok(StateDistribution {
+        focused: pct(focused),
+        at_risk: pct(at_risk),
+        procrastinating: pct(procrastinating),
+        idle: pct(idle),
+        focused_count: focused,
+        at_risk_count: at_risk,
+        procrastinating_count: procrastinating,
+        idle_count: idle,
+        total,
+    })
+}
+
+
+pub fn get_focus_score(db_path: &Path, since_timestamp: i64) -> Result<FocusScore> {
+    let conn = open_connection(db_path)?;
+
+    // Average confidence of ALL predictions in range
+    let avg_confidence: f64 = conn.query_row(
+        "SELECT COALESCE(AVG(confidence), 0.0)
+         FROM predictions
+         WHERE timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    // Total predictions and focused count
+    let total: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions WHERE timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let focused_count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM predictions
+         WHERE predicted_state = 'Focused'
+         AND timestamp >= ?1",
+        params![since_timestamp],
+        |row| row.get(0)
+    )?;
+
+    let focused_percentage = if total == 0 {
+        0.0
+    } else {
+        (focused_count as f64 / total as f64) * 100.0
+    };
+
+    // Focus score is weighted combination:
+    // 70% how often you were focused, 30% average confidence
+    // Both scaled to 0-100
+    let score = (focused_percentage * 0.7) + (avg_confidence * 100.0 * 0.3);
+
+    Ok(FocusScore {
+        score,
+        average_confidence: avg_confidence,
+        focused_percentage,
+    })
+}
+
+
+pub fn get_prediction_history(
+    db_path: &Path,
+    since_timestamp: i64,
+    state_filter: Option<String>,
+    limit: i64
+) -> Result<Vec<PredictionHistoryRow>> {
+    let conn = open_connection(db_path)?;
+
+    // Build query dynamically based on whether a state filter is applied
+    // We LEFT JOIN interventions to get the user_label if a correction was made
+    let rows = if let Some(state) = state_filter {
+        let mut stmt = conn.prepare(
+            "SELECT
+                p.id,
+                p.timestamp,
+                p.predicted_state,
+                p.confidence,
+                p.was_corrected,
+                i.user_label
+             FROM predictions p
+             LEFT JOIN interventions i ON i.predictions_id = p.id
+             WHERE p.timestamp >= ?1
+             AND p.predicted_state = ?2
+             ORDER BY p.timestamp DESC
+             LIMIT ?3"
+        )?;
+
+        let mapped_rows = stmt.query_map(params![since_timestamp, state, limit], |row| {
+            Ok(PredictionHistoryRow {
+                prediction_id: row.get(0)?,
+                timestamp: row.get(1)?,
+                predicted_state: row.get(2)?,
+                confidence: row.get(3)?,
+                was_corrected: row.get::<_, i64>(4)? != 0,
+                user_label: row.get(5)?,
+            })
+        })?;
+
+        mapped_rows
+            .filter_map(|r| r.ok())
+            .collect::<Vec<PredictionHistoryRow>>()
+    } else {
+        let mut stmt = conn.prepare(
+            "SELECT
+                p.id,
+                p.timestamp,
+                p.predicted_state,
+                p.confidence,
+                p.was_corrected,
+                i.user_label
+             FROM predictions p
+             LEFT JOIN interventions i ON i.predictions_id = p.id
+             WHERE p.timestamp >= ?1
+             ORDER BY p.timestamp DESC
+             LIMIT ?2"
+        )?;
+
+        let mapped_rows = stmt.query_map(params![since_timestamp, limit], |row| {
+            Ok(PredictionHistoryRow {
+                prediction_id: row.get(0)?,
+                timestamp: row.get(1)?,
+                predicted_state: row.get(2)?,
+                confidence: row.get(3)?,
+                was_corrected: row.get::<_, i64>(4)? != 0,
+                user_label: row.get(5)?,
+            })
+        })?;
+
+        mapped_rows
+            .filter_map(|r| r.ok())
+            .collect::<Vec<PredictionHistoryRow>>()
+    };
+
+    Ok(rows)
+}
+
+
+
+
