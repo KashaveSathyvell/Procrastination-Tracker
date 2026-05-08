@@ -79,7 +79,13 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
         }
 
-        let events = collect_events(db_path, window_start, window_end).unwrap();
+        let events = match collect_events(db_path, window_start, window_end) {
+            Ok(e) => e,
+            Err(e) => {
+                eprintln!("Failed to collect events: {}", e);
+                continue;
+            }
+        };
 
         //DEBUG
         println!("Events in window: {}", events.len());
@@ -95,7 +101,13 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
         let features = extract_features(events, window_start, window_end);
 
-        let feature_id = insert_features(db_path, &features).expect("TODO: panic message");
+        let feature_id = match insert_features(db_path, &features) {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to insert features: {}", e);
+                continue;
+            }
+        };
 
         let mut session_guard = session.lock().unwrap();
         let (label, confidence) = match run_inference(&mut session_guard, &features){
@@ -112,7 +124,13 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             was_corrected: false,
         };
 
-        let prediction_id = insert_predictions(db_path, &prediction).expect("TODO: panic message");
+        let prediction_id = match insert_predictions(db_path, &prediction) {
+            Ok(id) => id,
+            Err(e) => {
+                eprintln!("Failed to insert prediction: {}", e);
+                continue;
+            }
+        };
 
         //for dashbaord live prediction view
         println!("PREDICTION: {:?} Confidence: {:?}", &prediction.predicted_state, &prediction.confidence);
@@ -123,8 +141,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             confidence,
             timestamp: window_end * 1000,
         };
-        app_handle.emit("new_prediction", prediction_payload).expect("TODO: panic message");
-
+        if let Err(e) = app_handle.emit("new_prediction", prediction_payload) {
+            eprintln!("Failed to emit new_prediction: {}", e);
+        }
 
         if post_break_remaining_windows > 0 {
             if prediction.predicted_state == "Focused" {
@@ -146,8 +165,12 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
             let break_session_id = break_id.lock().unwrap();
             if let Some(break_sess_id) = *break_session_id {
-                update_break_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
-                update_pref_focus_score(&db_path, break_sess_id, post_break_average).expect("TODO: panic message");
+                if let Err(e) = update_break_focus_score(&db_path, break_sess_id, post_break_average) {
+                    eprintln!("Failed to update break focus score: {}", e);
+                }
+                if let Err(e) = update_pref_focus_score(&db_path, break_sess_id, post_break_average) {
+                    eprintln!("Failed to update preference focus score: {}", e);
+                }
             }
 
             post_break_scores.clear();
@@ -188,8 +211,14 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 user_label: None,
                 dismissed: false,
             };
-            
-            let intervention_id = insert_interventions(db_path, &intervention).expect("TODO: panic message");
+
+            let intervention_id = match insert_interventions(db_path, &intervention) {
+                Ok(id) => id,
+                Err(e) => {
+                    eprintln!("Failed to insert intervention: {}", e);
+                    continue;
+                }
+            };
 
             let activity_suggestion = suggest_activity(db_path);
 
@@ -206,7 +235,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
             show_popup_window(&app_handle);
 
-            app_handle.emit("new_intervention", payload).expect("TODO: panic message");
+            if let Err(e) = app_handle.emit("new_intervention", payload) {
+                eprintln!("Failed to emit new_intervention: {}", e);
+            }
         }
         else if focused_counter == focused_streak_threshold {
 
@@ -220,7 +251,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             focused_counter = 0;
 
             show_popup_window(&app_handle);
-            app_handle.emit("focus_check", focused_payload).expect("TODO: panic message");
+            if let Err(e) = app_handle.emit("focus_check", focused_payload) {
+                eprintln!("Failed to emit focus_check: {}", e);
+            }
 
         }
         else if idle_counter == 10 {
@@ -235,7 +268,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             idle_counter = 0;
 
             show_popup_window(&app_handle);
-            app_handle.emit("idle_check", idle_payload).expect("TODO: panic message");
+            if let Err(e) = app_handle.emit("idle_check", idle_payload) {
+                eprintln!("Failed to emit idle_check: {}", e);
+            }
             
         }
 
