@@ -31,6 +31,7 @@ pub fn run_inference(session: &mut Session, features: &FeatureVectors) -> Result
     //                                             features.mouse_velocity as f32,
     //                                             features.idle_ratio as f32,
     //                                             features.window_switch_frequency as f32,
+    //                                             features.scroll_velocity as f32,
     //                                         ]).unwrap();
 
     let outputs = session.run(ort::inputs!["float_input" => TensorRef::from_array_view(input_data.view())?])?;

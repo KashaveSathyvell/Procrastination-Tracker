@@ -43,6 +43,7 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             mouse_velocity REAL,
             idle_ratio REAL,
             window_switch_frequency REAL,
+            scroll_velocity REAL,
             truth_label TEXT
         );
 
@@ -112,6 +113,11 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
         "
     )?;
 
+    //DELETE AFTER RUN ONCE
+    let _ = conn.execute_batch(
+        "ALTER TABLE feature_vectors ADD COLUMN scroll_velocity REAL;"
+    );
+
     println!("Database schema initialized successfully.");
     Ok(conn)
 }
@@ -155,9 +161,9 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64
     let conn = open_connection(db_path)?;
 
     conn.execute(
-        "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency) \
-        Values (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency]
+        "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency, scroll_velocity) \
+        Values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency, features.scroll_velocity]
     )?;
 
     println!("Data added into FEATURE database: {:?}", features);

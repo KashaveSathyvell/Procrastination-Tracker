@@ -22,6 +22,7 @@ pub struct FeatureVectors {
     pub mouse_velocity: f64,
     pub idle_ratio: f64,
     pub window_switch_frequency: f64,
+    pub scroll_velocity: f64,
 }
 
 #[derive(Debug)]
