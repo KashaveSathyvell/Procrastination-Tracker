@@ -148,7 +148,13 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
     });
 
     {
-        let mut handles = state.handles.lock().unwrap();
+        let mut handles = match state.handles.lock() {
+            Ok(h) => h,
+            Err(e) => {
+                eprintln!("Handles mutex poisoned: {}", e);
+                return Err("Internal state error".to_string());
+            }
+        };
         *handles = Some(vec![handle1, handle2, handle3]);
     }
 
@@ -162,7 +168,13 @@ pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Resul
     on_break.on_break.store(false, Ordering::SeqCst);
     on_break.break_ended.store(false, Ordering::SeqCst);
 
-    let mut break_id = on_break.break_id.lock().unwrap();
+    let mut break_id = match on_break.break_id.lock() {
+        Ok(id) => id,
+        Err(e) => {
+            eprintln!("break_id mutex poisoned in stop_collect: {}", e);
+            return Err("Internal state error".to_string());
+        }
+    };
     *break_id = None;
     
     println!("Stopping threads");
@@ -195,7 +207,10 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
     };
 
     println!("Intervention update: {:?}", updated_intervention);
-    update_user_label(db_path, &updated_intervention).expect("TODO: panic message");
+    if let Err(e) = update_user_label(db_path, &updated_intervention) {
+        eprintln!("Failed to update user label: {}", e);
+        return Err(e.to_string());
+    }
 
     let (predictions_id, feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
         Ok(result) => result,
@@ -208,7 +223,10 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
                 eprintln!("Failed to mark predictions as corrected: {}", e);
             }
         }
-        update_n_windows_before(db_path, updated_truth_label).expect("TODO: panic message");
+        if let Err(e) = update_n_windows_before(db_path, updated_truth_label) {
+            eprintln!("Failed to update n windows before: {}", e);
+            return Err(e.to_string());
+        }
     }
 
     Ok(())
@@ -254,11 +272,15 @@ pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<Ap
     let mut current_break_id = on_break.break_id.lock().unwrap();
     *current_break_id = Some(end_break.break_session_id);
 
-    update_break(
-        &config.paths.database_path,
-        EndBreak { break_session_id: end_break.break_session_id, returned_on_time },
-        end_time
-    ).expect("TODO: panic message");
+    let break_end = EndBreak {
+        break_session_id: end_break.break_session_id,
+        returned_on_time
+    };
+
+    if let Err(e) = update_break(&config.paths.database_path, break_end, end_time) {
+        eprintln!("Failed to update break: {}", e);
+        return Err(e.to_string());
+    }
 
     Ok(())
 }

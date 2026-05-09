@@ -56,13 +56,13 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_remaining_windows = 5;
             post_break_scores.clear();
             end_break.store(false, std::sync::atomic::Ordering::SeqCst);
-            // Ensure we never compute a window that includes break-time events.
-            // We only resume predictions once a full 60s window exists after "I'm back".
-            resume_from_ts = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64);
+            // Ensure  never compute a window that include break-time events.
+            //  only resume predictions once a full 60s window exists after "I'm back".
+            resume_from_ts = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64);
         }
 
         let start_time = std::time::Instant::now();
-        let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64;
+        let window_end = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
         let window_start = window_end - 60;
 
         let app_handle = app_handle.clone();
@@ -109,7 +109,16 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
         };
 
-        let mut session_guard = session.lock().unwrap();
+        let mut session_guard = match session.lock() {
+            Ok(s) => s,
+            Err(e) => {
+                eprintln!("Session mutex poisoned, skipping window: {}", e);
+                let elapsed = start_time.elapsed();
+                let sleep = Duration::from_secs(60).saturating_sub(elapsed);
+                thread::sleep(sleep);
+                continue;
+            }
+        };
         let (label, confidence) = match run_inference(&mut session_guard, &features){
             Ok((result)) => (result),
             Err(err) => {eprintln!("Inference failed: {}", err); continue}
@@ -163,7 +172,17 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
             let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
 
-            let break_session_id = break_id.lock().unwrap();
+            let break_session_id = match break_id.lock() {
+                Ok(id) => id,
+                Err(e) => {
+                    eprintln!("break_id mutex poisoned in post-break scoring: {}", e);
+                    post_break_scores.clear();
+                    let elapsed = start_time.elapsed();
+                    let sleep = Duration::from_secs(60).saturating_sub(elapsed);
+                    thread::sleep(sleep);
+                    continue;
+                }
+            };
             if let Some(break_sess_id) = *break_session_id {
                 if let Err(e) = update_break_focus_score(&db_path, break_sess_id, post_break_average) {
                     eprintln!("Failed to update break focus score: {}", e);
@@ -282,12 +301,12 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 }
 
 pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) -> FeatureVectors {
-    let window_time = 60;
+    let window_time = 60.0;
 
     //get the typing speed. sum of key press events / 60
     let key_press: Vec<&Input> = events.iter().filter(|event| event.event_action == "KeyPress").collect();
     let key_count = key_press.len() as f64;
-    let typing_speed = key_count/60.0;
+    let typing_speed = key_count/window_time;
     println!("Amount of key presses: {}", key_count);
 
     //get the repetitive key ratio(multiple smae key clicks or not?), divide 60(sliding window time)
@@ -317,11 +336,11 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
         }).sum::<f64>()
     };
 
-    let mouse_velocity = mouse_dist / 60.0;
+    let mouse_velocity = mouse_dist / window_time;
 
     //idle ratio
     let mut idle = if events.len() == 0 {
-        60.0
+        window_time
     }
     else {
         let first_gap = (events[0].timestamp - window_start) as f64;
@@ -338,7 +357,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
         first_idle + event_idle + last_idle
     };
 
-    let idle_ratio = (idle / 60.0).min(1.0);
+    let idle_ratio = (idle / window_time).min(1.0);
 
     let window_activity: Vec<&Input> = events.iter().filter(|event| {
         event.event_action != "MouseMove" &&
@@ -357,9 +376,8 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
     //wheel scrooling
     let scroll_events: Vec<&Input> = events.iter().filter(|event| event.event_action == "WheelScroll").collect();
 
-    let scroll_velocity = scroll_events.iter()
-        .map(|event| event.wheel_y.unwrap_or(0).abs() as f64)
-        .sum::<f64>() / 60.0;
+    let scroll_velocity = scroll_events.iter().map(|event| event.wheel_y.unwrap_or(0).abs() as f64)
+        .sum::<f64>() / window_time;
 
 
     let feature_vector = FeatureVectors {
