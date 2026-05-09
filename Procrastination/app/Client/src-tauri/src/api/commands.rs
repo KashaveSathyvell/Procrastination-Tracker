@@ -504,10 +504,7 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
 
 
 #[tauri::command]
-pub fn trigger_retraining(
-    config: State<AppConfig>,
-    model_state: State<ModelState>,
-) -> Result<RetrainingResult, String> {
+pub fn trigger_retraining(config: State<AppConfig>, model_state: State<ModelState>, ) -> Result<RetrainingResult, String> {
     let db_path = config.paths.database_path.to_str()
         .ok_or("Invalid database path")?
         .to_string();
@@ -527,7 +524,7 @@ pub fn trigger_retraining(
 
         let prod_path = exe_dir.map(|d| d.join("retrain.py"));
         let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../ml/retrain.py");
+            .join("../../../ml/src/retrain.py");
 
         match prod_path {
             Some(p) if p.exists() => p,
@@ -546,7 +543,18 @@ pub fn trigger_retraining(
     println!("DB path: {}", db_path);
     println!("Model output: {}", model_output_path);
 
-    let output = std::process::Command::new("python")
+    let venv_python = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("../../../ml/venv/Scripts/python.exe");
+
+    let python_exe = if venv_python.exists() {
+        println!("Using venv Python: {:?}", venv_python);
+        venv_python
+    } else {
+        println!("venv not found, falling back to system python");
+        std::path::PathBuf::from("python")
+    };
+
+    let output = std::process::Command::new(python_exe)
         .arg(script_path)
         .arg(&db_path)
         .arg(&model_output_path)
@@ -596,44 +604,25 @@ pub fn trigger_retraining(
 
 //analyticsn  history
 #[tauri::command]
-pub fn get_analytics_stats(
-    range_days: i64,
-    config: State<AppConfig>
-) -> Result<StateDistribution, String> {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+pub fn get_analytics_stats(range_days: i64, config: State<AppConfig>) -> Result<StateDistribution, String> {
+    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
 
     get_prediction_stats(&config.paths.database_path, since)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_analytics_focus_score(
-    range_days: i64,
-    config: State<AppConfig>
-) -> Result<FocusScore, String> {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+pub fn get_analytics_focus_score(range_days: i64, config: State<AppConfig>) -> Result<FocusScore, String> {
+    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
 
     get_focus_score(&config.paths.database_path, since)
         .map_err(|e| e.to_string())
 }
 
 #[tauri::command]
-pub fn get_history(
-    range_days: i64,
-    state_filter: Option<String>,
-    config: State<AppConfig>
-) -> Result<Vec<PredictionHistoryRow>, String> {
-    let since = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64 - (range_days * 24 * 60 * 60);
+pub fn get_history(range_days: i64, state_filter: Option<String>, config: State<AppConfig>) -> Result<Vec<PredictionHistoryRow>, String> {
+    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
 
-    get_prediction_history(&config.paths.database_path, since, state_filter, 100)
+    get_prediction_history(&config.paths.database_path, since, state_filter, 1000)
         .map_err(|e| e.to_string())
 }

@@ -113,11 +113,6 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
         "
     )?;
 
-    //DELETE AFTER RUN ONCE
-    let _ = conn.execute_batch(
-        "ALTER TABLE feature_vectors ADD COLUMN scroll_velocity REAL;"
-    );
-
     println!("Database schema initialized successfully.");
     Ok(conn)
 }
@@ -593,7 +588,7 @@ pub fn clear_old_events(db_path: &Path) -> Result<()> {
     let seven_days_ago = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() as i64 - (7 * 24 * 60 * 60);
+        .as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
 
     let deleted = conn.execute(
         "DELETE FROM input_events WHERE timestamp < ?1",
@@ -748,12 +743,7 @@ pub fn get_focus_score(db_path: &Path, since_timestamp: i64) -> Result<FocusScor
 }
 
 
-pub fn get_prediction_history(
-    db_path: &Path,
-    since_timestamp: i64,
-    state_filter: Option<String>,
-    limit: i64
-) -> Result<Vec<PredictionHistoryRow>> {
+pub fn get_prediction_history(db_path: &Path, since_timestamp: i64, state_filter: Option<String>, limit: i64) -> Result<Vec<PredictionHistoryRow>> {
     let conn = open_connection(db_path)?;
 
     // Build query dynamically based on whether a state filter is applied

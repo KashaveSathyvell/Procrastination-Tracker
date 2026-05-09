@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { listen, emit } from "@tauri-apps/api/event";
 import "./App.css";
 import { Sidebar } from "./Components/Sidebar";
 import { Onboarding } from "./Components/Onboarding";
@@ -8,6 +8,8 @@ import { Dashboard } from "./Components/Pages/Dashboard";
 import { Analytics } from "./Components/Pages/Analytics";
 import { History } from "./Components/Pages/History";
 import { Settings } from "./Components/Pages/Settings";
+import { LoadingScreen } from "./Components/LoadingScreen";
+
 
 type PageKey = "dashboard" | "analytics" | "history" | "settings";
 type ThemeMode = "dark" | "light";
@@ -34,28 +36,18 @@ function App() {
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [predictions, setPredictions] = useState<PredictionItem[]>([]);
   const [totalPredictions, setTotalPredictions] = useState(0);
+
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const savedTheme = localStorage.getItem("theme");
-    return savedTheme === "light" ? "light" : "dark";
+    const resolved = savedTheme === "light" ? "light" : "dark";
+    document.documentElement.setAttribute("data-theme", resolved);
+    return resolved;
   });
-
-  const isStateNotManagedError = (err: unknown) => {
-    const msg =
-      typeof err === "string"
-        ? err
-        : (err as any)?.message
-          ? String((err as any).message)
-          : String(err);
-    return (
-      msg.includes("state not managed") ||
-      msg.includes("must call") && msg.includes(".manage()") ||
-      msg.includes(".manage()")
-    );
-  };
 
   useEffect(() => {
     localStorage.setItem("theme", theme);
     document.documentElement.setAttribute("data-theme", theme);
+    document.body.setAttribute("data-theme", theme);
   }, [theme]);
 
   useEffect(() => {
@@ -64,37 +56,34 @@ function App() {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     const run = async () => {
-      // On first launch after a restart, Rust managed state may not yet be registered.
-      // Retry only for that specific "state not managed / must call .manage()" failure.
-      const maxAttempts = 10;
-      const delayMs = 250;
+      const maxAttempts = 25;
+      const delayMs = 300;
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
-        try {
-          const result = await invoke<boolean>("preference_exist");
-          if (cancelled) return;
-          setHasPreferences(result);
-          return;
-        } catch (err) {
-          if (cancelled) return;
-          const shouldRetry = isStateNotManagedError(err) && attempt < maxAttempts - 1;
+          try {
+              const result = await invoke<boolean>("preference_exist");
+              if (cancelled) return;
+              setHasPreferences(result);
+              return;
+          } catch (err) {
+              if (cancelled) return;
 
-          if (!shouldRetry) {
-            console.error("preference_exist failed:", err);
-            setHasPreferences(true); // existing fallback behavior
-            return;
+              if (attempt < maxAttempts - 1) {
+                  await sleep(delayMs);
+                  continue;
+              }
+
+              console.error("preference_exist failed after all retries:", err);
+              setHasPreferences(false);
           }
-
-          await sleep(delayMs);
-        }
       }
-    };
+  };
 
-    run().catch((err) => {
+  run().catch((err) => {
       if (cancelled) return;
       console.error("preference_exist failed (unexpected):", err);
-      setHasPreferences(true); // existing fallback behavior
-    });
+      // Leave as null — keep showing loading screen
+  });
 
     return () => {
       cancelled = true;
@@ -176,8 +165,14 @@ function App() {
     };
   }, []);
 
-  const toggleTheme = () => {
-    setTheme((prevTheme) => (prevTheme === "dark" ? "light" : "dark"));
+  const toggleTheme = async () => {
+      const newTheme = theme === "dark" ? "light" : "dark";
+      setTheme(newTheme);
+      try {
+          await emit("theme-changed", { theme: newTheme });
+      } catch (e) {
+          console.error("Failed to emit theme change:", e);
+      }
   };
 
   const renderPage = () => {
@@ -200,7 +195,11 @@ function App() {
     return <Settings theme={theme} setTheme={setTheme} />;
   };
 
-  if (hasPreferences === null) return null; // loading state
+  if (hasPreferences === null) return (
+    <div id="app-root" data-theme={theme}>
+        <LoadingScreen />
+    </div>
+);
 
   return (
     <div id="app-root" data-theme={theme}>

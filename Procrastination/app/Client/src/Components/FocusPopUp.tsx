@@ -25,6 +25,22 @@ export const FocusPopUp = () => {
     const [selectedLabel, setSelectedLabel] = useState<string>("Focused");
 
     useEffect(() => {
+        const savedTheme = localStorage.getItem("theme") ?? "dark";
+        document.documentElement.setAttribute("data-theme", savedTheme);
+
+        const setupThemeListener = async () => {
+            const unlisten = await listen<{ theme: string }>("theme-changed", (event) => {
+                document.documentElement.setAttribute("data-theme", event.payload.theme);
+                localStorage.setItem("theme", event.payload.theme);
+            });
+            return unlisten;
+        };
+
+        const unlistenFn = setupThemeListener();
+        return () => { unlistenFn.then(fn => fn()); };
+    }, []);
+
+    useEffect(() => {
         const setupListener = async () => {
             const unlisten = await listen<FocusStreakPayload>('focus_check', (event) => {
                 setPayload(event.payload);
