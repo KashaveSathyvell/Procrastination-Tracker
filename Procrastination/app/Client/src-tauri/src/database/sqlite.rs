@@ -544,10 +544,7 @@ pub fn update_n_windows_before(db_path: &Path, update_package: IdleFocusedPackag
 pub fn get_retraining_stats(db_path: &Path) -> Result<(f64, i64)> {
     let conn = open_connection(db_path)?;
 
-    let two_days_ago = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64 - (48 * 60 * 60);
+    let two_days_ago = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 - (48 * 60 * 60);
 
     let total_predictions: i64 = conn.query_row(
         "SELECT COUNT(*) FROM predictions WHERE timestamp >= ?1",
@@ -585,10 +582,7 @@ pub fn get_retraining_stats(db_path: &Path) -> Result<(f64, i64)> {
 pub fn clear_old_events(db_path: &Path) -> Result<()> {
     let conn = open_connection(db_path)?;
 
-    let seven_days_ago = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .unwrap()
-        .as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
+    let seven_days_ago = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
 
     let deleted = conn.execute(
         "DELETE FROM input_events WHERE timestamp < ?1",
