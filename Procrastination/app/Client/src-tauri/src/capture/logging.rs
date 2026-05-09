@@ -41,25 +41,22 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         Err(_) => return,
     };
 
-    let dt = match DateTime::from_timestamp(secs, 0) {
+    let _dt = match DateTime::from_timestamp(secs, 0) {
         Some(v) => v,
         None => return,
     };
-    let timestamp = dt.format("%Y-%m-%d %H:%M:%S");
 
 
-    let (event_type, event_action, key_code, mouse_X, mouse_Y, wheel_X, wheel_Y, button) = match event.event_type {
+    let (event_type, event_action, key_code, mouse_x, mouse_y, wheel_x, wheel_y, button) = match event.event_type {
         EventType::KeyPress(key) => ("keyboard", "KeyPress", Some(format!("{:?}", key)), None, None, None, None, None),
         EventType::KeyRelease(key) => ("keyboard", "KeyRelease", Some(format!("{:?}", key)), None, None, None, None, None),
         EventType::MouseMove {x, y} => ("Mouse", "MouseMove", None, Some(x), Some(y), None, None, None),
         EventType::Wheel {delta_x, delta_y} => ("Mouse", "WheelScroll", None, None, None, Some(delta_x), Some(delta_y), None),
         EventType::ButtonPress(btn) => ("Mouse", "ButtonPress", None, None, None, None, None, Some(format!("{:?}", btn))),
         EventType::ButtonRelease(btn) => ("Mouse", "ButtonRelease", None, None, None, None, None, Some(format!("{:?}", btn))),
-
-        _ => ("Unknown", "Unknown", None, None, None, None, None, None)
     };
 
-    let activeWindow = if matches!(event.event_type, EventType::MouseMove { .. }) {
+    let active_window = if matches!(event.event_type, EventType::MouseMove { .. }) {
         LAST_WINDOW
             .get_or_init(|| Mutex::new(String::new()))
             .lock()
@@ -84,13 +81,13 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
         timestamp: secs,
         event_type: event_type.to_string(),
         event_action: event_action.to_string(),
-        key_code: key_code,
-        mouse_x: mouse_X,
-        mouse_y: mouse_Y,
-        wheel_x: wheel_X,
-        wheel_y: wheel_Y,
-        button: button,
-        active_window: activeWindow,
+        key_code,
+        mouse_x,
+        mouse_y,
+        wheel_x,
+        wheel_y,
+        button,
+        active_window,
     };
 
     if let Err(error) = tx.send(input) {

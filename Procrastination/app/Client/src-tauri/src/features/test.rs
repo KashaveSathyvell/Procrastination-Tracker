@@ -1,7 +1,6 @@
 #[cfg(test)]
 mod tests {
     use crate::features::feature_extractor::extract_features;
-    use super::*;
     use crate::models::table_structs::Input;
 
     fn make_key_event(timestamp: i64, key: &str) -> Input {

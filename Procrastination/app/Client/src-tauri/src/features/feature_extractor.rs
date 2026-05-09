@@ -119,7 +119,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
         };
         let (label, confidence) = match run_inference(&mut session_guard, &features){
-            Ok((result)) => (result),
+            Ok(result) => result,
             Err(err) => {eprintln!("Inference failed: {}", err); continue}
         };
 
@@ -323,7 +323,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
     //mouse vel. cal distancebetween each mouse move event. divide 60 to find ratio
     let mouse_move: Vec<&Input> = events.iter().filter(|event| event.event_action == "MouseMove").collect();
 
-    let mut mouse_dist = if mouse_move.len() <= 1 {
+    let mouse_dist = if mouse_move.len() <= 1 {
         0.0
     }
     else {
@@ -338,7 +338,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
     let mouse_velocity = mouse_dist / window_time;
 
     //idle ratio
-    let mut idle = if events.len() == 0 {
+    let idle = if events.len() == 0 {
         window_time
     }
     else {

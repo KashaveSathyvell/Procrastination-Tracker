@@ -6,12 +6,11 @@ use std::sync::atomic::{Ordering};
 use chrono::Utc;
 use rusqlite::params;
 use rusqlite::Connection;
-use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
 use crate::capture::logging::{logging};
-use crate::database::sqlite::{update_user_label, get_ids, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
+use crate::database::sqlite::{update_user_label, get_ids, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;
 use tauri::{Emitter, Manager, State};
@@ -208,13 +207,13 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
         return Err(e.to_string());
     }
 
-    let (predictions_id, feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
+    let (_predictions_id, _feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
         Ok(result) => result,
         Err(err) => return Err(err.to_string())
     };
 
     if updated_intervention.dismissed == false {
-        if (updated_intervention.user_label != updated_intervention.predicted_label) {
+        if updated_intervention.user_label != updated_intervention.predicted_label {
             if let Err(e) = prediction_corrected_n_windows(db_path, updated_intervention.timestamp, 3, true) {
                 eprintln!("Failed to mark predictions as corrected: {}", e);
             }
@@ -231,7 +230,7 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
 
 //ERROR: PopUp.tsx:84 start_break failed: invalid args `plannedDurationMins` for command `break_start`: command break_start missing required key plannedDurationMins
 #[tauri::command]
-pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins: i64, preference_id: i64, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<(i64), String> {
+pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins: i64, preference_id: i64, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<i64, String> {
 
     let break_session = BreakSessions {
         intervention_id,
@@ -298,7 +297,7 @@ pub fn open_break_window(
     break_session_id: i64,
     intervention_id: i64,
 ) -> Result<(), String> {
-    use tauri::WebviewUrl;
+    
     use tauri::WebviewWindowBuilder;
 
     let init_data = BreakInitData {

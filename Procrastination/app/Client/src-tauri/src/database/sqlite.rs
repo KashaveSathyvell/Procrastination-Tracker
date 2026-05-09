@@ -150,7 +150,7 @@ pub fn insert_events_conn(conn: &Connection, input: &Input) -> Result<()> {
     Ok(())
 }
 
-pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64)> {
+pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -162,10 +162,10 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64
     println!("Data added into FEATURE database: {:?}", features);
 
     let id = conn.last_insert_rowid();
-    Ok((id))
+    Ok(id)
 }
 
-pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(i64)> {
+pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -176,10 +176,10 @@ pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(
 
     let id = conn.last_insert_rowid();
 
-    Ok((id))
+    Ok(id)
 }
 
-pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<(i64)> {
+pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -204,7 +204,7 @@ pub fn insert_user_preference(db_path: &Path, preference: &UserPreferences) -> R
     Ok(())
 }
 
-pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<(i64)> {
+pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
