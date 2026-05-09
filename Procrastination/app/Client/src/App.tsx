@@ -56,8 +56,8 @@ function App() {
     const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
     const run = async () => {
-      const maxAttempts = 25;
-      const delayMs = 300;
+      const maxAttempts = 40;
+      const delayMs = 500;
 
       for (let attempt = 0; attempt < maxAttempts; attempt++) {
           try {

@@ -11,17 +11,16 @@ use ort::editor::Model;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::fallible_iterator::FallibleIterator;
-use tauri::async_runtime::handle;
 use tauri::AppHandle;
+use tauri_plugin_shell::ShellExt;
 
-use crate::capture::keyboard::{callback, logging};
-use crate::database::sqlite::{initialize_database, insert_events, insert_events_conn, update_user_label, get_ids, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
+use crate::capture::keyboard::{logging};
+use crate::database::sqlite::{update_user_label, get_ids, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;
 use tauri::{Emitter, Manager, State};
-use tauri::WebviewUrl::App;
 use crate::config::AppConfig;
-use crate::models::table_structs::{BreakSessions, Input, UserPreferences};
+use crate::models::table_structs::{BreakSessions, Input};
 use crate::models::models::{ThreadStop, ModelState, UpdateIntervention, OnBreak, EndBreak, IdleFocusedPackage, RetrainingStats, RetrainingResult, StateDistribution, FocusScore, PredictionHistoryRow, ActivityScore, StreakSettings, BreakInitData};
 use crate::intervention::activity::break_activities;
 use crate::ml::inference::load_model;
@@ -503,70 +502,30 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
 
 
 
+
 #[tauri::command]
-pub fn trigger_retraining(config: State<AppConfig>, model_state: State<ModelState>, ) -> Result<RetrainingResult, String> {
-    let db_path = config.paths.database_path.to_str()
-        .ok_or("Invalid database path")?
-        .to_string();
+pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model_state: State<ModelState>) -> Result<RetrainingResult, String> {
+    let db_path = config.paths.database_path.to_str().ok_or("Invalid database path")?.to_string();
 
-    let model_output_path = config.paths.model_path.to_str()
-        .ok_or("Invalid model path")?
-        .to_string();
+    let model_output_path = config.paths.model_path.to_str().ok_or("Invalid model path")?.to_string();
 
-    // Resolve the path to retrain.py relative to the project
-    // During development this works; for production we use sidecar (see below)
-    // let script_path = std::path::Path::new("../../../ml/retrain.py");
-    // Resolve retrain.py: next to executable in production, or via CARGO_MANIFEST_DIR in dev
-    let script_path = {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()));
-
-        let prod_path = exe_dir.map(|d| d.join("retrain.py"));
-        let dev_path = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("../../../ml/src/retrain.py");
-
-        match prod_path {
-            Some(p) if p.exists() => p,
-            _ if dev_path.exists() => {
-                println!("Dev mode: using {:?}", dev_path);
-                dev_path
-            }
-            _ => return Err(
-                "retrain.py not found. In production, place it next to the .exe. \
-             In dev, ensure src-tauri/../../ml/retrain.py exists.".to_string()
-            ),
-        }
-    };
-
-    println!("Triggering retraining...");
+    println!("Triggering retraining via sidecar...");
     println!("DB path: {}", db_path);
     println!("Model output: {}", model_output_path);
 
-    let venv_python = std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-        .join("../../../ml/venv/Scripts/python.exe");
+    // Spawn the sidecar — Tauri resolves the correct binary for the current platform
+    let sidecar_command = app_handle.shell().sidecar("retrain")
+        .map_err(|e| format!("Failed to find retrain sidecar: {}", e))?.args([&db_path, &model_output_path]);
 
-    let python_exe = if venv_python.exists() {
-        println!("Using venv Python: {:?}", venv_python);
-        venv_python
-    } else {
-        println!("venv not found, falling back to system python");
-        std::path::PathBuf::from("python")
-    };
+    let output = tauri::async_runtime::block_on(sidecar_command.output())
+        .map_err(|e| format!("Failed to run retrain sidecar: {}", e))?;
 
-    let output = std::process::Command::new(python_exe)
-        .arg(script_path)
-        .arg(&db_path)
-        .arg(&model_output_path)
-        .output()
-        .map_err(|e| format!("Failed to spawn Python process: {}", e))?;
 
-    // Print Python stdout/stderr to Rust console for debugging
     let stdout = String::from_utf8_lossy(&output.stdout);
     let stderr = String::from_utf8_lossy(&output.stderr);
-    println!("Python stdout:\n{}", stdout);
+    println!("Sidecar stdout:\n{}", stdout);
     if !stderr.is_empty() {
-        println!("Python stderr:\n{}", stderr);
+        println!("Sidecar stderr:\n{}", stderr);
     }
 
     if !output.status.success() {
@@ -576,7 +535,7 @@ pub fn trigger_retraining(config: State<AppConfig>, model_state: State<ModelStat
         });
     }
 
-    // Reload the model from the new path
+    // Reload model
     println!("Reloading model from: {}", model_output_path);
     let new_session = load_model(std::path::PathBuf::from(&model_output_path))
         .map_err(|e| format!("Failed to load retrained model: {}", e))?;
@@ -588,7 +547,6 @@ pub fn trigger_retraining(config: State<AppConfig>, model_state: State<ModelStat
         println!("Model session replaced successfully");
     }
 
-    // Clean up old input events
     clear_old_events(&config.paths.database_path)
         .map_err(|e| format!("Failed to clear old events: {}", e))?;
 
@@ -597,7 +555,6 @@ pub fn trigger_retraining(config: State<AppConfig>, model_state: State<ModelStat
         message: "Model retrained successfully and loaded. Old input events cleared.".to_string(),
     })
 }
-
 
 
 
