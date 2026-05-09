@@ -1,8 +1,6 @@
-// src-tauri/src/database/sqlite.rs
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::menu::NativeIcon::User;
 use crate::models::models::{ActivityScore, EndBreak, FocusScore, IdleFocusedPackage, PredictionHistoryRow, PreferenceUpdate, StateDistribution, UpdateIntervention};
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions, UserPreferences, BreakSessions};
 

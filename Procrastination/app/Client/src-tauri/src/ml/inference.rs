@@ -1,8 +1,7 @@
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex};
 use ndarray::Array2;
 use ort::session::{builder::GraphOptimizationLevel, Session};
-use ort::value::{TensorRef, Value};
+use ort::value::{TensorRef};
 use crate::models::table_structs::FeatureVectors;
 
 pub fn load_model(resource_path: PathBuf) -> Result<Session, ort::Error> {

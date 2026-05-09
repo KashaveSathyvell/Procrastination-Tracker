@@ -1,4 +1,3 @@
-use std::cmp::Ordering;
 use std::path::Path;
 use std::sync::{Arc, Mutex};
 use std::sync::atomic::AtomicBool;

@@ -1,5 +1,3 @@
-// Learn more aboupub(crate)pub(crate)t Tauri commands at https://tauri.app/develop/calling-rust/
-
 pub mod models;
 pub mod capture;
 pub mod database;
@@ -8,7 +6,7 @@ pub mod api;
 pub mod ml;
 pub mod intervention;
 
-use std::path::Path;
+
 use ml::inference::load_model;
 
 use std::sync::{Arc, Mutex};

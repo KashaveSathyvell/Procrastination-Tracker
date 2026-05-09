@@ -6,8 +6,6 @@ use std::sync::{Mutex, OnceLock};
 use rdev::{listen, Event, EventType};
 use active_win_pos_rs::get_active_window;
 use chrono::{DateTime};
-use tauri::State;
-use crate::models::models::OnBreak;
 use crate::models::table_structs::Input;
 
 static LAST_WINDOW: OnceLock<Mutex<String>> = OnceLock::new();

@@ -1,20 +1,16 @@
-use std::sync::mpsc::{Sender, Receiver, TryRecvError};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc::{TryRecvError};
+use std::sync::{mpsc};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::Thread;
+use std::sync::atomic::{Ordering};
 use chrono::Utc;
-use ndarray::AssignElem;
-use ort::editor::Model;
 use rusqlite::params;
 use rusqlite::Connection;
 use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
-use crate::capture::keyboard::{logging};
+use crate::capture::logging::{logging};
 use crate::database::sqlite::{update_user_label, get_ids, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;

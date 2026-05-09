@@ -1,7 +1,7 @@
 use std::path::Path;
 use chrono::Utc;
 use rand::seq::IndexedRandom;
-use rand::{Rng, RngExt};
+use rand::{RngExt};
 
 use crate::models::table_structs::UserPreferences;
 use crate::models::models::{ActivitySuggestion, PreferenceUpdate};
