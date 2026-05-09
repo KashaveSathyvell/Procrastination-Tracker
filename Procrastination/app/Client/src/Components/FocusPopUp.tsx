@@ -25,6 +25,22 @@ export const FocusPopUp = () => {
     const [selectedLabel, setSelectedLabel] = useState<string>("Focused");
 
     useEffect(() => {
+        const savedTheme = localStorage.getItem("theme") ?? "dark";
+        document.documentElement.setAttribute("data-theme", savedTheme);
+
+        const setupThemeListener = async () => {
+            const unlisten = await listen<{ theme: string }>("theme-changed", (event) => {
+                document.documentElement.setAttribute("data-theme", event.payload.theme);
+                localStorage.setItem("theme", event.payload.theme);
+            });
+            return unlisten;
+        };
+
+        const unlistenFn = setupThemeListener();
+        return () => { unlistenFn.then(fn => fn()); };
+    }, []);
+
+    useEffect(() => {
         const setupListener = async () => {
             const unlisten = await listen<FocusStreakPayload>('focus_check', (event) => {
                 setPayload(event.payload);
@@ -64,10 +80,36 @@ export const FocusPopUp = () => {
         }
     };
 
+    // const handleCorrection = async () => {
+    //     if (!payload) return;
+    //     setIsVisible(false);
+    //     setPayload(null);
+    //     try {
+    //         await invoke('update_label_streak', {
+    //             stateConfirmation: {
+    //                 timestamp: payload.timestamp,
+    //                 streakWindows: payload.streakWindows,
+    //                 label: selectedLabel,
+    //                 overwrite: true,
+    //             } as stateConfirmation
+    //         });
+    //     } catch (e) {
+    //         console.error('update_label_streak failed:', e);
+    //     }
+    //     try {
+    //         const { getCurrentWindow } = await import("@tauri-apps/api/window");
+    //         const win = getCurrentWindow();
+    //         if (win.label !== "main") await win.hide();
+    //     } catch (e) {
+    //         console.error("Failed to hide popup window:", e);
+    //     }
+    // };
+
     const handleCorrection = async () => {
         if (!payload) return;
         setIsVisible(false);
         setPayload(null);
+
         try {
             await invoke('update_label_streak', {
                 stateConfirmation: {
@@ -80,6 +122,19 @@ export const FocusPopUp = () => {
         } catch (e) {
             console.error('update_label_streak failed:', e);
         }
+
+        // If user corrects to a bad state, surface the intervention popup
+        if (selectedLabel === 'Procrastinating' || selectedLabel === 'At Risk') {
+            try {
+                await invoke('trigger_manual_intervention', {
+                    label: selectedLabel,
+                    timestamp: payload.timestamp,
+                });
+            } catch (e) {
+                console.error('Failed to trigger intervention after correction:', e);
+            }
+        }
+
         try {
             const { getCurrentWindow } = await import("@tauri-apps/api/window");
             const win = getCurrentWindow();
@@ -88,6 +143,8 @@ export const FocusPopUp = () => {
             console.error("Failed to hide popup window:", e);
         }
     };
+
+    
 
     if (!isVisible || !payload) return null;
 

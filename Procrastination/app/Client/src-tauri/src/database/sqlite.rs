@@ -43,6 +43,7 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             mouse_velocity REAL,
             idle_ratio REAL,
             window_switch_frequency REAL,
+            scroll_velocity REAL,
             truth_label TEXT
         );
 
@@ -97,6 +98,18 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
             key TEXT PRIMARY KEY,
             value TEXT NOT NULL
         );
+
+        CREATE INDEX IF NOT EXISTS idx_input_events_timestamp
+            ON input_events(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_feature_vectors_timestamp
+            ON feature_vectors(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_predictions_timestamp
+            ON predictions(timestamp);
+
+        CREATE INDEX IF NOT EXISTS idx_interventions_timestamp
+            ON interventions(timestamp);
         "
     )?;
 
@@ -143,9 +156,9 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64
     let conn = open_connection(db_path)?;
 
     conn.execute(
-        "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency) \
-        Values (?1, ?2, ?3, ?4, ?5, ?6)",
-        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency]
+        "INSERT INTO feature_vectors(timestamp, typing_speed, repetitive_key_ratio, mouse_velocity, idle_ratio, window_switch_frequency, scroll_velocity) \
+        Values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+        params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency, features.scroll_velocity]
     )?;
 
     println!("Data added into FEATURE database: {:?}", features);
@@ -257,13 +270,16 @@ pub fn update_user_label(db_path: &Path, updated: &UpdateIntervention) -> Result
     Ok(())
 }
 
-pub fn prediction_corrected(db_path:&Path, prediction_id: i64, corrected: bool) -> Result<()> {
+pub fn prediction_corrected_n_windows(db_path: &Path, timestamp: i64, streak_windows: i64, corrected: bool, ) -> Result<()> {
     let conn = open_connection(db_path)?;
 
-    conn.execute("UPDATE predictions \
-    SET was_corrected = ?1 \
-    WHERE id = ?2"
-    , params![corrected, prediction_id])?;
+    conn.execute(
+        "UPDATE predictions
+         SET was_corrected = ?1
+         WHERE timestamp <= ?2
+         AND timestamp >= (?2 - (?3 * 60) - 30)",
+        params![corrected, timestamp, streak_windows],
+    )?;
 
     Ok(())
 }
@@ -572,7 +588,7 @@ pub fn clear_old_events(db_path: &Path) -> Result<()> {
     let seven_days_ago = SystemTime::now()
         .duration_since(UNIX_EPOCH)
         .unwrap()
-        .as_secs() as i64 - (7 * 24 * 60 * 60);
+        .as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
 
     let deleted = conn.execute(
         "DELETE FROM input_events WHERE timestamp < ?1",
@@ -727,12 +743,7 @@ pub fn get_focus_score(db_path: &Path, since_timestamp: i64) -> Result<FocusScor
 }
 
 
-pub fn get_prediction_history(
-    db_path: &Path,
-    since_timestamp: i64,
-    state_filter: Option<String>,
-    limit: i64
-) -> Result<Vec<PredictionHistoryRow>> {
+pub fn get_prediction_history(db_path: &Path, since_timestamp: i64, state_filter: Option<String>, limit: i64) -> Result<Vec<PredictionHistoryRow>> {
     let conn = open_connection(db_path)?;
 
     // Build query dynamically based on whether a state filter is applied

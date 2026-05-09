@@ -1,5 +1,6 @@
 // BreakPopUp.tsx
 import { invoke } from "@tauri-apps/api/core";
+import { listen } from "@tauri-apps/api/event";
 import { useEffect, useState } from 'react';
 import { BreakData } from './PopUp';
 import './BreakPopUp.css';
@@ -16,6 +17,24 @@ type BreakPopUpProps = {
 export const BreakPopUp = ({ breakData, onBreakEnd }: BreakPopUpProps) => {
     const [breakState, setBreakState] = useState<BreakState>('active');
     const [secondsLeft, setSecondsLeft] = useState((breakData.duration ?? 5) * 60);
+
+    useEffect(() => {
+        // Apply saved theme on mount
+        const savedTheme = localStorage.getItem("theme") ?? "dark";
+        document.documentElement.setAttribute("data-theme", savedTheme);
+
+        // Listen for theme changes from main window
+        const setupThemeListener = async () => {
+            const unlisten = await listen<{ theme: string }>("theme-changed", (event) => {
+                document.documentElement.setAttribute("data-theme", event.payload.theme);
+                localStorage.setItem("theme", event.payload.theme);
+            });
+            return unlisten;
+        };
+
+        const unlistenFn = setupThemeListener();
+        return () => { unlistenFn.then(fn => fn()); };
+    }, []);
 
     useEffect(() => {
         setSecondsLeft((breakData.duration ?? 5) * 60);

@@ -22,13 +22,14 @@ FEATURE_COLUMNS = [
     'repetitive_key_ratio',
     'mouse_velocity',
     'idle_ratio',
-    'window_switch_frequency'
+    'window_switch_frequency',
+    'scroll_velocity'
 ]
 
 MIN_LABELLED_ROWS = 50
 CORRECTION_RATE_THRESHOLD = 0.25
 
-
+#Remove coalesce after retrained once. DELETE
 def load_labelled_data(db_path: str) -> pd.DataFrame:
     print(f"Connecting to database: {db_path}")
 
@@ -44,6 +45,7 @@ def load_labelled_data(db_path: str) -> pd.DataFrame:
             mouse_velocity,
             idle_ratio,
             window_switch_frequency,
+            COALESCE(scroll_velocity, 0.0) AS scroll_velocity,  
             truth_label
         FROM feature_vectors
         WHERE truth_label IS NOT NULL
@@ -152,8 +154,8 @@ def verify_model(model_path: str) -> bool:
             return False
 
         # Test with a clearly focused input:
-        # high typing speed, low repetition, moderate mouse, low idle, low switching
-        test_input = np.array([[1.2, 0.05, 15.0, 0.1, 0.02]], dtype=np.float32)
+        # high typing speed, low repetition, moderate mouse, low idle, low switching, no scrolling
+        test_input = np.array([[1.2, 0.05, 15.0, 0.1, 0.02, 0.0]], dtype=np.float32)
 
         input_name = sess.get_inputs()[0].name
         outputs = sess.run(["label", "probabilities"], {input_name: test_input})

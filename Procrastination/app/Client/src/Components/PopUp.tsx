@@ -33,10 +33,23 @@ export const PopUp = () => {
     const [showCorrection, setShowCorrection] = useState(false);
     const [selectedLabel, setSelectedLabel] = useState<string>("");
 
-    // const appWindow = getCurrentWindow();
+    useEffect(() => {
+        // Apply saved theme on mount
+        const savedTheme = localStorage.getItem("theme") ?? "dark";
+        document.documentElement.setAttribute("data-theme", savedTheme);
 
-    // await appWindow.setAlwaysOnTop(true);
-    // await appWindow.setFocus();
+        // Listen for theme changes from main window
+        const setupThemeListener = async () => {
+            const unlisten = await listen<{ theme: string }>("theme-changed", (event) => {
+                document.documentElement.setAttribute("data-theme", event.payload.theme);
+                localStorage.setItem("theme", event.payload.theme);
+            });
+            return unlisten;
+        };
+
+        const unlistenFn = setupThemeListener();
+        return () => { unlistenFn.then(fn => fn()); };
+    }, []);
 
     useEffect(() => {
         const setupListener = async () => {

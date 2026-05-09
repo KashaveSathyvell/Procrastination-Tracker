@@ -354,6 +354,14 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
 
     let window_switch_ratio = window_switch / 1.0;
 
+    //wheel scrooling
+    let scroll_events: Vec<&Input> = events.iter().filter(|event| event.event_action == "WheelScroll").collect();
+
+    let scroll_velocity = scroll_events.iter()
+        .map(|event| event.wheel_y.unwrap_or(0).abs() as f64)
+        .sum::<f64>() / 60.0;
+
+
     let feature_vector = FeatureVectors {
         timestamp: window_end,
         typing_speed,
@@ -361,6 +369,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
         mouse_velocity,
         idle_ratio,
         window_switch_frequency: window_switch_ratio,
+        scroll_velocity,
     };
     println!("Features calculated: {:?}", feature_vector);
     feature_vector

@@ -136,6 +136,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
 
   const correctionPercent =
     retrainingStats != null ? Math.round(Math.min(1, Math.max(0, retrainingStats.correction_rate)) * 100) : null;
+  const accuracyPercent = correctionPercent !== null ? 100 - correctionPercent : null;
 
   const availableActivities = allActivities.filter((activity) => !savedActivities.includes(activity));
 
@@ -367,20 +368,25 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
 
         <div className="model-performance-metrics">
           <div className="metric-card">
-            <p className="metric-label">Correction rate</p>
-            <p className="metric-value">
-              {retrainingStatsLoading ? "…" : correctionPercent !== null ? `${correctionPercent}%` : "—"}
-            </p>
+              <p className="metric-label">Model accuracy</p>
+              <p className="metric-value">
+                  {retrainingStatsLoading ? "…" : accuracyPercent !== null ? `${accuracyPercent}%` : "—"}
+              </p>
           </div>
           <div className="metric-card">
-            <p className="metric-label">Labelled training rows</p>
-            <p className="metric-value">
-              {retrainingStatsLoading
-                ? "…"
-                : retrainingStats != null
-                  ? `${retrainingStats.labelled_count} rows`
-                  : "—"}
-            </p>
+              <p className="metric-label">Labelled training rows</p>
+              <p className="metric-value">
+                  {retrainingStatsLoading
+                      ? "…"
+                      : retrainingStats != null
+                          ? `${retrainingStats.labelled_count} rows`
+                          : "—"}
+              </p>
+              {!retrainingStatsLoading && correctionPercent !== null && (
+                  <p className="status-secondary" style={{ marginTop: "4px", fontSize: "12px" }}>
+                      {correctionPercent}% correction rate
+                  </p>
+              )}
           </div>
           <div className="metric-card">
             <p className="metric-label">Status</p>
@@ -424,7 +430,9 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
                   ? "Unavailable"
                   : retrainingStats.retraining_needed
                     ? "Retrain Model"
-                    : "Not enough data"}
+                    : retrainingStats.labelled_count < 50
+                    ? "Not enough data yet"
+                    : "Model accuracy is good"}
           </button>
           {retrainingInProgress && (
             <p className="model-performance-duration-hint status-secondary">This may take up to a minute.</p>

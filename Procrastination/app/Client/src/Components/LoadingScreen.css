@@ -1,0 +1,43 @@
+.loading-screen {
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 20px;
+    background-color: var(--bg-primary);
+    font-family: system-ui, -apple-system, sans-serif;
+}
+
+.loading-ring {
+    display: block;
+}
+
+.ring-track {
+    fill: none;
+    stroke: var(--border);
+    stroke-width: 3;
+}
+
+.ring-glow {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-dasharray: 80 203;
+    stroke-dashoffset: 0;
+    animation: spin 1.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+@keyframes spin {
+    to {
+        stroke-dashoffset: -283;
+    }
+}
+
+.loading-text {
+    font-size: 0.875rem;
+    color: var(--text-secondary);
+    margin: 0;
+    letter-spacing: 0.01em;
+}
