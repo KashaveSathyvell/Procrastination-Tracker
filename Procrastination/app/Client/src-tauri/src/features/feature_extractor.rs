@@ -29,7 +29,7 @@ fn show_popup_window(app_handle: &AppHandle) {
 }
 
 pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>, break_id: &Arc<Mutex<Option<i64>>>) {
-    let confidence_threshold = 0.75;
+    let confidence_threshold = 0.75;  //Should I reduce the score? Ask spv
     let mut prediction_counter = 0;
     let mut focused_counter = 0;
     let mut idle_counter = 0;
@@ -55,8 +55,8 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_remaining_windows = 5;
             post_break_scores.clear();
             end_break.store(false, std::sync::atomic::Ordering::SeqCst);
-            // Ensure  never compute a window that include break-time events.
-            //  only resume predictions once a full 60s window exists after "I'm back".
+            // make sure window with  break time event is not computed
+            //  only resume predictions 1 min after user hits "I'm back".
             resume_from_ts = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64);
         }
 
@@ -68,7 +68,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
 
         if let Some(resume_ts) = resume_from_ts {
             if window_start < resume_ts {
-                // Not enough post-break time has elapsed to form a clean 60s window.
+                // Not enough post-break time has passed to form a proper 60s window.
                 let elapsed = start_time.elapsed();
                 let sleep = Duration::from_secs(60).saturating_sub(elapsed);
                 thread::sleep(sleep);
@@ -85,17 +85,6 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 continue;
             }
         };
-
-        //DEBUG
-        println!("Events in window: {}", events.len());
-        if let Some(first) = events.first() {
-            println!("First event timestamp: {}", first.timestamp);
-        }
-        if let Some(last) = events.last() {
-            println!("Last event timestamp: {}", last.timestamp);
-        }
-        println!("Window: {} to {}", window_start, window_end);
-
 
 
         let features = extract_features(events, window_start, window_end);
@@ -141,7 +130,6 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         };
 
         //for dashbaord live prediction view
-        println!("PREDICTION: {:?} Confidence: {:?}", &prediction.predicted_state, &prediction.confidence);
         let prediction_payload = PredictionPackage {
             prediction_id,
             feature_vector_id: feature_id,
@@ -161,13 +149,9 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 post_break_scores.push(0.0)
             }
 
-            println!("POST BREAK REMAINING WINDOWS: {}", post_break_remaining_windows);
-
             post_break_remaining_windows -= 1
         }
         else if post_break_remaining_windows == 0 && !post_break_scores.is_empty() {
-
-            println!("UPDATING POST BREAK AVERAGE");
 
             let post_break_average = post_break_scores.iter().sum::<f64>() / 5.0;
 
@@ -197,20 +181,29 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         //Logic for intervention popups
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
-        if intervention_confidence && (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
-            prediction_counter += 1;
+        if (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
             focused_counter = 0;
             idle_counter = 0;
+
+            if intervention_confidence {
+                prediction_counter += 1;
+            }
         }
-        else if intervention_confidence && &prediction.predicted_state == "Focused" {
-            focused_counter += 1;
+        else if &prediction.predicted_state == "Focused" {
             prediction_counter = 0;
             idle_counter = 0;
+
+            if intervention_confidence {
+                focused_counter += 1;
+            }
         }
-        else if intervention_confidence && &prediction.predicted_state == "Idle" {
-            idle_counter += 1;
+        else if &prediction.predicted_state == "Idle" {
             focused_counter = 0;
             prediction_counter = 0;
+
+            if intervention_confidence {
+                idle_counter += 1;
+            }
         }
         else {
             prediction_counter = 0;
@@ -306,7 +299,6 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
     let key_press: Vec<&Input> = events.iter().filter(|event| event.event_action == "KeyPress").collect();
     let key_count = key_press.len() as f64;
     let typing_speed = key_count/window_time;
-    println!("Amount of key presses: {}", key_count);
 
     //get the repetitive key ratio(multiple smae key clicks or not?), divide 60(sliding window time)
     let repetitive_key = if key_count == 0.0 {
@@ -350,9 +342,6 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
             (pair[1].timestamp - pair[0].timestamp) as f64
         }).filter(|gap| *gap > 2.0).sum::<f64>();
 
-        //DEBUG
-        println!("First Gap: {}, Event Gap: {}, Last Gap: {}", first_idle, event_idle, last_idle);
-
         first_idle + event_idle + last_idle
     };
 
@@ -388,6 +377,6 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
         window_switch_frequency: window_switch_ratio,
         scroll_velocity,
     };
-    println!("Features calculated: {:?}", feature_vector);
+    
     feature_vector
 }

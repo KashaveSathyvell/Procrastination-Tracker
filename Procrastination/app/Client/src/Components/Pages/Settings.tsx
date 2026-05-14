@@ -1,4 +1,5 @@
 import { invoke } from "@tauri-apps/api/core";
+import { emit } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 import React from "react";
 import "./Pages.css";
@@ -190,9 +191,16 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
     try {
       const result = await invoke<RetrainingResultPayload>("trigger_retraining");
       setRetrainFeedback({
-        kind: result.success ? "success" : "error",
-        text: result.message,
+          kind: result.success ? "success" : "error",
+          text: result.message,
       });
+      if (result.success) {
+          try {
+              await emit("model-retrained");
+          } catch (e) {
+              console.error("Failed to emit model-retrained:", e);
+          }
+      }
     } catch (e) {
       const msg = e instanceof Error ? e.message : String(e);
       setRetrainFeedback({ kind: "error", text: msg });
@@ -390,22 +398,23 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
           </div>
           <div className="metric-card">
             <p className="metric-label">Status</p>
-            <p
+            <p 
               className={`metric-value ${
                 retrainingStatsLoading
-                  ? ""
-                  : retrainingStats?.retraining_needed
-                    ? "model-performance-status-warn"
-                    : "model-performance-status-ok"
-              }`}
-            >
-              {retrainingStatsLoading
-                ? "…"
-                : retrainingStats
-                  ? retrainingStats.retraining_needed
-                    ? "Retraining recommended"
-                    : "Model performing well"
-                  : "Could not load"}
+                    ? ""
+                    : retrainingStats?.retraining_needed
+                        ? "model-performance-status-warn"
+                        : "model-performance-status-ok"
+            }`}>
+                {retrainingStatsLoading
+                    ? "…"
+                    : retrainingStats
+                        ? retrainingStats.retraining_needed
+                            ? "Retraining recommended"
+                            : retrainingStats.labelled_count >= 50
+                                ? "Recently retrained"
+                                : "Model performing well"
+                        : "Could not load"}
             </p>
           </div>
         </div>
@@ -452,7 +461,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       <section className="card settings-section">
         <h3 className="section-title">About</h3>
         <p>FocusGuard</p>
-        <p className="status-secondary">Version 0.1.0</p>
+        <p className="status-secondary">Version 0.1.2</p>
         <p className="status-secondary">Procrastination detection and intervention system</p>
       </section>
     </div>

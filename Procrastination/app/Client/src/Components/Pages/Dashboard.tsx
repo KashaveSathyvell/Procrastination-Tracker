@@ -8,6 +8,8 @@ type DashboardProps = {
   totalPredictions: number;
   isMonitoring: boolean;
   onMonitoringChange: (active: boolean) => void;
+  showRetrainingBanner: boolean;
+  onNavigateToSettings: () => void;
 };
 
 const getStateClass = (label: string) => {
@@ -38,8 +40,9 @@ const formatTime = (timestamp: number) => {
   return `${month} ${day}, ${timePart}`;
 };
 
-export const Dashboard = ({ predictions, totalPredictions, isMonitoring, onMonitoringChange }: DashboardProps) => {
+export const Dashboard = ({ predictions, totalPredictions, isMonitoring, onMonitoringChange, showRetrainingBanner, onNavigateToSettings }: DashboardProps) => {
   const [pulseDot, setPulseDot] = useState(false);
+  const [bannerDismissed, setBannerDismissed] = useState(false);
 
   useEffect(() => {
     if (predictions.length === 0) return;
@@ -66,6 +69,24 @@ export const Dashboard = ({ predictions, totalPredictions, isMonitoring, onMonit
 
   return (
     <div className="page-shell dashboard-page">
+      {showRetrainingBanner && !bannerDismissed && (
+        <div className="retrain-banner">
+            <div className="retrain-banner-content">
+                <span className="retrain-banner-icon">⚠</span>
+                <span className="retrain-banner-text">
+                    Model accuracy may be declining. Retrain when system is not in use.
+                </span>
+            </div>
+            <div className="retrain-banner-actions">
+                <button className="retrain-banner-btn" onClick={onNavigateToSettings}>
+                    Go to Settings
+                </button>
+                <button className="retrain-banner-dismiss" onClick={() => setBannerDismissed(true)}>
+                    ✕
+                </button>
+            </div>
+        </div>
+      )}
       <header>
         <h1 className="page-title">Dashboard</h1>
         <p className="page-subtitle">Live monitoring status and recent predictions.</p>

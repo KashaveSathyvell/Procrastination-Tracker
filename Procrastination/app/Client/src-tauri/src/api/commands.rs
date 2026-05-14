@@ -41,9 +41,6 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
     let break_end = on_break.break_ended.clone();
     let break_id = on_break.break_id.clone();
 
-
-    println!("Collecting data");
-
     let (tx, rx) = mpsc::channel::<Input>();
 
     let handle1 = thread::spawn(move || {
@@ -171,8 +168,7 @@ pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Resul
         }
     };
     *break_id = None;
-    
-    println!("Stopping threads");
+
     Ok(())
 }
 
@@ -201,7 +197,6 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
         overwrite,
     };
 
-    println!("Intervention update: {:?}", updated_intervention);
     if let Err(e) = update_user_label(db_path, &updated_intervention) {
         eprintln!("Failed to update user label: {}", e);
         return Err(e.to_string());
@@ -245,8 +240,6 @@ pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins
 
     on_break.on_break.store(true, Ordering::SeqCst);
 
-    println!("Break update: {:?}", break_session);
-
     let break_id = insert_break_sessions(&config.paths.database_path, &break_session).map_err(|e| e.to_string())?;
 
     Ok(break_id)
@@ -263,7 +256,6 @@ pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<Ap
     let planned_end_ts = start_ts + (planned_mins * 60);
     let returned_on_time = end_time <= planned_end_ts;
 
-    println!("Break ended: session {}, on time: {}", end_break.break_session_id, returned_on_time);
     let mut current_break_id = on_break.break_id.lock().unwrap();
     *current_break_id = Some(end_break.break_session_id);
 
@@ -312,8 +304,7 @@ pub fn open_break_window(
         let mut slot = pending_state.data.lock().map_err(|e| e.to_string())?;
         *slot = Some(init_data.clone());
     }
-
-    println!("Opening break window from configured app window");
+    
     if let Some(window) = app_handle.get_webview_window("break") {
         let _ = window.unminimize();
         let _ = window.center();
@@ -501,12 +492,27 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
     let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path)
         .map_err(|e| e.to_string())?;
 
-    let retraining_needed = correction_rate > 0.25 && labelled_count >= 50;
+    // check if retrained within last 2 days
+    let two_days_secs: i64 = 2 * 24 * 60 * 60;
+    let last_retrained = get_setting(&config.paths.database_path, "last_retrained_at")
+        .unwrap_or(None)
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let recently_retrained = (now - last_retrained) < two_days_secs;
+
+    let retraining_needed = !recently_retrained && correction_rate > 0.25 && labelled_count >= 50;
 
     println!(
-        "Retraining check — correction rate: {:.2}%, labelled rows: {}, needed: {}",
+        "Retraining check — correction rate: {:.2}%, labelled rows: {}, recently retrained: {}, needed: {}",
         correction_rate * 100.0,
         labelled_count,
+        recently_retrained,
         retraining_needed
     );
 
@@ -519,18 +525,14 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
 
 
 
-
 #[tauri::command]
 pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model_state: State<ModelState>) -> Result<RetrainingResult, String> {
     let db_path = config.paths.database_path.to_str().ok_or("Invalid database path")?.to_string();
 
     let model_output_path = config.paths.model_path.to_str().ok_or("Invalid model path")?.to_string();
 
-    println!("Triggering retraining via sidecar...");
-    println!("DB path: {}", db_path);
-    println!("Model output: {}", model_output_path);
 
-    // Spawn the sidecar — Tauri resolves the correct binary for the current platform
+    // Spawn] sidecar, Tauri resolves correct binary for current platform
     let sidecar_command = app_handle.shell().sidecar("retrain")
         .map_err(|e| format!("Failed to find retrain sidecar: {}", e))?.args([&db_path, &model_output_path]);
 
@@ -566,6 +568,12 @@ pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model
 
     clear_old_events(&config.paths.database_path)
         .map_err(|e| format!("Failed to clear old events: {}", e))?;
+
+    save_setting(
+        &config.paths.database_path,
+        "last_retrained_at",
+        &chrono::Utc::now().timestamp().to_string(),
+    ).map_err(|e| format!("Failed to save retrain timestamp: {}", e))?;
 
     Ok(RetrainingResult {
         success: true,

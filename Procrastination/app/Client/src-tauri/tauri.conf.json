@@ -1,6 +1,6 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "client",
+  "productName": "FocusGuard",
   "version": "0.1.0",
   "identifier": "com.kashave.client",
   "build": {

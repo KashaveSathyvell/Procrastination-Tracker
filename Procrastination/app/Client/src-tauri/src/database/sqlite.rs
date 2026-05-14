@@ -111,7 +111,6 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
         "
     )?;
 
-    println!("Database schema initialized successfully.");
     Ok(conn)
 }
 
@@ -158,8 +157,6 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<i64>
         Values (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency, features.scroll_velocity]
     )?;
-
-    println!("Data added into FEATURE database: {:?}", features);
 
     let id = conn.last_insert_rowid();
     Ok(id)
@@ -582,12 +579,11 @@ pub fn clear_old_events(db_path: &Path) -> Result<()> {
 
     let seven_days_ago = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
 
-    let deleted = conn.execute(
+    let _deleted = conn.execute(
         "DELETE FROM input_events WHERE timestamp < ?1",
         params![seven_days_ago],
     )?;
 
-    println!("Cleared {} old input_events rows", deleted);
     Ok(())
 }
 

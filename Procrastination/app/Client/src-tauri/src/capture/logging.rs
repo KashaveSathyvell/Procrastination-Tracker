@@ -20,7 +20,6 @@ pub fn callback(event: Event, tx: Sender<Input>, running: &Arc<AtomicBool>, on_b
     let is_on_break = on_break.load(Ordering::SeqCst);
     if let Ok(mut last_state) = LAST_ON_BREAK_STATE.get_or_init(|| Mutex::new(None)).lock() {
         if last_state.map(|state| state != is_on_break).unwrap_or(true) {
-            println!("On Break state is {}", is_on_break);
             *last_state = Some(is_on_break);
         }
     }

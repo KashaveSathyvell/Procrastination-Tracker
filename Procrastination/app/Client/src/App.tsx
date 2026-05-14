@@ -30,12 +30,19 @@ type RecentPredictionRow = {
   user_label: string | null;
 };
 
+type RetrainingStats = {
+  correction_rate: number;
+  labelled_count: number;
+  retraining_needed: boolean;
+};
+
 function App() {
   const [hasPreferences, setHasPreferences] = useState<boolean | null>(null);
   const [currentPage, setCurrentPage] = useState<PageKey>("dashboard");
   const [isMonitoring, setIsMonitoring] = useState(false);
   const [predictions, setPredictions] = useState<PredictionItem[]>([]);
   const [totalPredictions, setTotalPredictions] = useState(0);
+  const [retrainingBanner, setRetrainingBanner] = useState(false);
 
   const [theme, setTheme] = useState<ThemeMode>(() => {
     const savedTheme = localStorage.getItem("theme");
@@ -129,6 +136,17 @@ function App() {
   useEffect(() => {
     if (!hasPreferences) return;
 
+    invoke<RetrainingStats>("check_retraining_needed")
+        .then((stats) => {
+            const showBanner = stats.retraining_needed && stats.correction_rate >= 0.25 && stats.labelled_count >= 70;
+            setRetrainingBanner(showBanner);
+        })
+        .catch(() => {});
+  }, [hasPreferences]);
+
+  useEffect(() => {
+    if (!hasPreferences) return;
+
     let unlistenFn: (() => void) | null = null;
     const setup = async () => {
       const unlisten = await listen<PredictionItem>("new_prediction", (event) => {
@@ -165,6 +183,32 @@ function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!hasPreferences) return;
+
+    let unlistenFn: (() => void) | null = null;
+    const setup = async () => {
+        const unlisten = await listen("model-retrained", () => {
+            // re-check retraining stats after retrain completes
+            invoke<RetrainingStats>("check_retraining_needed")
+                .then((stats) => {
+                    const showBanner = stats.correction_rate >= 0.25 
+                        && stats.labelled_count >= 70
+                        && stats.retraining_needed;
+                    setRetrainingBanner(showBanner);
+                })
+                .catch(() => {});
+        });
+        unlistenFn = unlisten;
+    };
+
+    setup().catch(() => {});
+
+    return () => {
+        if (unlistenFn) unlistenFn();
+    };
+  }, [hasPreferences]);
+
   const toggleTheme = async () => {
       const newTheme = theme === "dark" ? "light" : "dark";
       setTheme(newTheme);
@@ -183,6 +227,8 @@ function App() {
           totalPredictions={totalPredictions}
           isMonitoring={isMonitoring}
           onMonitoringChange={setIsMonitoring}
+          showRetrainingBanner={retrainingBanner}
+          onNavigateToSettings={() => setCurrentPage("settings")}
         />
       );
     }
