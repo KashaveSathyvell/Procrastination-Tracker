@@ -3,14 +3,14 @@ use std::sync::{mpsc};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 use std::sync::atomic::{Ordering};
-use chrono::Utc;
+use chrono::{TimeZone, Utc};
 use rusqlite::params;
 use rusqlite::Connection;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
 use crate::capture::logging::{logging};
-use crate::database::sqlite::{update_user_label, get_ids, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
+use crate::database::sqlite::{update_user_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;
 use tauri::{Emitter, Manager, State};
@@ -202,11 +202,6 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
         return Err(e.to_string());
     }
 
-    let (_predictions_id, _feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
-        Ok(result) => result,
-        Err(err) => return Err(err.to_string())
-    };
-
     if updated_intervention.dismissed == false {
         if updated_intervention.user_label != updated_intervention.predicted_label {
             if let Err(e) = prediction_corrected_n_windows(db_path, updated_intervention.timestamp, 3, true) {
@@ -358,7 +353,7 @@ pub fn trigger_manual_intervention(
 
     // Create an intervention record in the DB
     let intervention = Interventions {
-        predictions_id: 0, // no specific prediction triggered this
+        predictions_id: None, // no specific prediction triggered this
         timestamp,
         intervention_type: "ManualCorrection".to_string(),
         prediction_label: label.clone(),
@@ -472,17 +467,24 @@ pub fn update_label_streak(config: State<AppConfig>, state_confirmation: IdleFoc
 
 #[tauri::command]
 pub fn get_streak_settings(config: State<AppConfig>) -> Result<StreakSettings, String> {
-    let value = get_setting(&config.paths.database_path, "focused_streak_window")
-        .map_err(|e| e.to_string())?;
+    let focused = get_setting(&config.paths.database_path, "focused_streak_window")
+        .map_err(|e| e.to_string())?
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(15);
 
-    let focused_streak_window = value.and_then(|v| v.parse::<i64>().ok()).unwrap_or(15);
+    let idle = get_setting(&config.paths.database_path, "idle_streak_window")
+        .map_err(|e| e.to_string())?
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(10);
 
-    Ok(StreakSettings { focused_streak_window })
+    Ok(StreakSettings { focused_streak_window: focused, idle_streak_window: idle })
 }
 
 #[tauri::command]
 pub fn save_streak_settings(settings: StreakSettings, config: State<AppConfig>) -> Result<(), String> {
     save_setting(&config.paths.database_path, "focused_streak_window", &settings.focused_streak_window.to_string())
+        .map_err(|e| e.to_string())?;
+    save_setting(&config.paths.database_path, "idle_streak_window", &settings.idle_streak_window.to_string())
         .map_err(|e| e.to_string())
 }
 
@@ -585,9 +587,27 @@ pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model
 
 
 //analyticsn  history
+
+fn since_timestamp(range_days: i64) -> i64 {
+    if range_days <= 1 {
+        // start of today in local time
+        let now = chrono::Local::now();
+        let start_of_day = now.date_naive().and_hms_opt(0, 0, 0).unwrap();
+        chrono::Local.from_local_datetime(&start_of_day)
+            .unwrap()
+            .timestamp()
+    } else {
+        SystemTime::now()
+            .duration_since(UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_secs() as i64 - (range_days * 24 * 60 * 60)
+    }
+}
+
+
 #[tauri::command]
 pub fn get_analytics_stats(range_days: i64, config: State<AppConfig>) -> Result<StateDistribution, String> {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
+    let since = since_timestamp(range_days);
 
     get_prediction_stats(&config.paths.database_path, since)
         .map_err(|e| e.to_string())
@@ -595,7 +615,7 @@ pub fn get_analytics_stats(range_days: i64, config: State<AppConfig>) -> Result<
 
 #[tauri::command]
 pub fn get_analytics_focus_score(range_days: i64, config: State<AppConfig>) -> Result<FocusScore, String> {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
+    let since = since_timestamp(range_days);
 
     get_focus_score(&config.paths.database_path, since)
         .map_err(|e| e.to_string())
@@ -603,8 +623,17 @@ pub fn get_analytics_focus_score(range_days: i64, config: State<AppConfig>) -> R
 
 #[tauri::command]
 pub fn get_history(range_days: i64, state_filter: Option<String>, config: State<AppConfig>) -> Result<Vec<PredictionHistoryRow>, String> {
-    let since = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs() as i64 - (range_days * 24 * 60 * 60);
+    let since = since_timestamp(range_days);
 
     get_prediction_history(&config.paths.database_path, since, state_filter, 1000)
+        .map_err(|e| e.to_string())
+}
+
+
+#[tauri::command]
+pub fn get_state_timeline(range_days: i64, config: State<AppConfig>) -> Result<Vec<(i64, String, f64)>, String> {
+    let since = since_timestamp(range_days);
+    let bucket_seconds = if range_days <= 1 { 3600i64 } else { 86400i64 };
+    crate::database::sqlite::get_state_percentages_by_bucket(&config.paths.database_path, since, bucket_seconds)
         .map_err(|e| e.to_string())
 }

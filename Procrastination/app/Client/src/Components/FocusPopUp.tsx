@@ -132,6 +132,7 @@ export const FocusPopUp = () => {
                 });
             } catch (e) {
                 console.error('Failed to trigger intervention after correction:', e);
+                alert('Intervention trigger failed: ' + String(e));
             }
         }
 

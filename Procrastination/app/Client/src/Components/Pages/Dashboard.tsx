@@ -102,9 +102,9 @@ export const Dashboard = ({ predictions, totalPredictions, isMonitoring, onMonit
         <div className="confidence-wrap">
           <div className="confidence-track">
             <div
-              className="confidence-fill"
+              className={`confidence-fill ${currentPrediction ? getStateClass(currentPrediction.prediction_label) : ""}`}
               style={{ width: `${Math.round((currentPrediction?.confidence || 0) * 100)}%` }}
-            />
+            />  
           </div>
           <span className="status-secondary">
             Confidence: {Math.round((currentPrediction?.confidence || 0) * 100)}%

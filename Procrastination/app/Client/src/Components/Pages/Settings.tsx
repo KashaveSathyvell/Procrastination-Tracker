@@ -30,10 +30,12 @@ type ActivityScorePayload = {
 };
 
 type StreakSettingsPayload = {
-  focusedStreakWindow: number;
+    focusedStreakWindow: number;
+    idleStreakWindow: number;
 };
 
 const FOCUS_STREAK_OPTIONS = [5, 8, 10, 12, 15, 20];
+const IDLE_STREAK_OPTIONS = [5, 8, 10, 15, 20, 30];
 
 export const Settings = ({ theme, setTheme }: SettingsProps) => {
   const [savedActivities, setSavedActivities] = useState<string[]>([]);
@@ -42,6 +44,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
   const [activitiesError, setActivitiesError] = useState<string | null>(null);
 
   const [focusedStreakWindow, setFocusedStreakWindow] = useState<number>(15);
+  const [idleStreakWindow, setIdleStreakWindow] = useState<number>(10);
   const [streakSaveSuccess, setStreakSaveSuccess] = useState(false);
   const [streakSaveError, setStreakSaveError] = useState<string | null>(null);
 
@@ -109,18 +112,16 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
 
   useEffect(() => {
     invoke<StreakSettingsPayload>("get_streak_settings")
-      .then((settings) => {
-        const nextValue = Number(settings?.focusedStreakWindow);
-        if (FOCUS_STREAK_OPTIONS.includes(nextValue)) {
-          setFocusedStreakWindow(nextValue);
-        } else {
-          setFocusedStreakWindow(15);
-        }
-      })
-      .catch(() => {
-        // Fail silently and keep default value.
-        setFocusedStreakWindow(15);
-      });
+        .then((settings) => {
+            const focusedVal = Number(settings?.focusedStreakWindow);
+            setFocusedStreakWindow(FOCUS_STREAK_OPTIONS.includes(focusedVal) ? focusedVal : 15);
+            const idleVal = Number(settings?.idleStreakWindow);
+            setIdleStreakWindow(IDLE_STREAK_OPTIONS.includes(idleVal) ? idleVal : 10);
+        })
+        .catch(() => {
+            setFocusedStreakWindow(15);
+            setIdleStreakWindow(10);
+        });
   }, []);
 
   useEffect(() => {
@@ -155,15 +156,19 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
   };
 
   const handleRemoveActivity = async (activity: string) => {
+    if (savedActivities.length <= 1) {
+        setActivitiesError("At least one activity must remain. Add another before removing this one.");
+        return;
+    }
     setActivitiesLoading(true);
     setActivitiesError(null);
     try {
-      await invoke("delete_activity", { activityName: activity });
-      await loadSavedActivities();
+        await invoke("delete_activity", { activityName: activity });
+        await loadSavedActivities();
     } catch (_e) {
-      setActivitiesError("Could not remove activity. Please try again.");
+        setActivitiesError("Could not remove activity. Please try again.");
     } finally {
-      setActivitiesLoading(false);
+        setActivitiesLoading(false);
     }
   };
 
@@ -174,13 +179,30 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
     setStreakSaveSuccess(false);
     try {
       await invoke("save_streak_settings", {
-        settings: { focusedStreakWindow: nextValue },
+        settings: { focusedStreakWindow: nextValue, idleStreakWindow: idleStreakWindow },
       });
       setStreakSaveSuccess(true);
       setTimeout(() => setStreakSaveSuccess(false), 2000);
     } catch (_e) {
       setFocusedStreakWindow(prevValue);
       setStreakSaveError("Could not save setting. Reverted to previous value.");
+    }
+  };
+
+  const handleIdleStreakChange = async (nextValue: number) => {
+    const prevValue = idleStreakWindow;
+    setIdleStreakWindow(nextValue);
+    setStreakSaveError(null);
+    setStreakSaveSuccess(false);
+    try {
+        await invoke("save_streak_settings", {
+            settings: { focusedStreakWindow: focusedStreakWindow, idleStreakWindow: nextValue },
+        });
+        setStreakSaveSuccess(true);
+        setTimeout(() => setStreakSaveSuccess(false), 2000);
+    } catch (_e) {
+        setIdleStreakWindow(prevValue);
+        setStreakSaveError("Could not save setting. Reverted to previous value.");
     }
   };
 
@@ -232,7 +254,6 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
           <span className="status-secondary">Detection threshold</span>
           <span>75%</span>
         </div>
-        {/* TODO: Make detection threshold configurable via Tauri settings command. */}
       </section>
 
       <section className="card settings-section">
@@ -251,6 +272,23 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
             ))}
           </select>
         </div>
+        <div className="detection-settings-row">
+          <label htmlFor="idle-streak-window">Idle check-in after:</label>
+          <select
+              id="idle-streak-window"
+              value={idleStreakWindow}
+              onChange={(e) => handleIdleStreakChange(Number(e.target.value))}
+          >
+              {IDLE_STREAK_OPTIONS.map((minutes) => (
+                  <option key={minutes} value={minutes}>
+                      {minutes} minutes
+                  </option>
+              ))}
+          </select>
+        </div>
+        <p className="status-secondary">
+            The system will check in if you appear idle for this long.
+        </p>
         <p className="status-secondary">
           The system will check in if you appear focused for this long. Lower this if you tend to lose focus before 15
           minutes.
@@ -461,7 +499,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       <section className="card settings-section">
         <h3 className="section-title">About</h3>
         <p>FocusGuard</p>
-        <p className="status-secondary">Version 0.1.2</p>
+        <p className="status-secondary">Version 0.1.3</p>
         <p className="status-secondary">Procrastination detection and intervention system</p>
       </section>
     </div>

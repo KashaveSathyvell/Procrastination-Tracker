@@ -38,7 +38,7 @@ pub struct Predictions {
 
 #[derive(Debug, Serialize, Clone)]
 pub struct Interventions {
-    pub predictions_id: i64,
+    pub predictions_id: Option<i64>,
     pub timestamp: i64,
     pub intervention_type: String,
     pub prediction_label: String,
