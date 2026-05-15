@@ -1,21 +1,16 @@
-use std::sync::mpsc::{Sender, Receiver, TryRecvError};
-use std::sync::{mpsc, Arc, Mutex};
+use std::sync::mpsc::{TryRecvError};
+use std::sync::{mpsc};
 use std::thread;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
-use std::path::Path;
-use std::sync::atomic::{AtomicBool, Ordering};
-use std::thread::Thread;
+use std::sync::atomic::{Ordering};
 use chrono::Utc;
-use ndarray::AssignElem;
-use ort::editor::Model;
 use rusqlite::params;
 use rusqlite::Connection;
-use rusqlite::fallible_iterator::FallibleIterator;
 use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
-use crate::capture::keyboard::{logging};
-use crate::database::sqlite::{update_user_label, get_ids, assign_truth_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
+use crate::capture::logging::{logging};
+use crate::database::sqlite::{update_user_label, get_ids, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;
 use tauri::{Emitter, Manager, State};
@@ -45,9 +40,6 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
     let user_break2 = on_break.on_break.clone();
     let break_end = on_break.break_ended.clone();
     let break_id = on_break.break_id.clone();
-
-
-    println!("Collecting data");
 
     let (tx, rx) = mpsc::channel::<Input>();
 
@@ -176,8 +168,7 @@ pub fn stop_collect(state: State<ThreadStop>, on_break: State<OnBreak>) -> Resul
         }
     };
     *break_id = None;
-    
-    println!("Stopping threads");
+
     Ok(())
 }
 
@@ -206,19 +197,18 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
         overwrite,
     };
 
-    println!("Intervention update: {:?}", updated_intervention);
     if let Err(e) = update_user_label(db_path, &updated_intervention) {
         eprintln!("Failed to update user label: {}", e);
         return Err(e.to_string());
     }
 
-    let (predictions_id, feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
+    let (_predictions_id, _feature_vector_id) = match get_ids(db_path, updated_intervention.intervention_id) {
         Ok(result) => result,
         Err(err) => return Err(err.to_string())
     };
 
     if updated_intervention.dismissed == false {
-        if (updated_intervention.user_label != updated_intervention.predicted_label) {
+        if updated_intervention.user_label != updated_intervention.predicted_label {
             if let Err(e) = prediction_corrected_n_windows(db_path, updated_intervention.timestamp, 3, true) {
                 eprintln!("Failed to mark predictions as corrected: {}", e);
             }
@@ -235,7 +225,7 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
 
 //ERROR: PopUp.tsx:84 start_break failed: invalid args `plannedDurationMins` for command `break_start`: command break_start missing required key plannedDurationMins
 #[tauri::command]
-pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins: i64, preference_id: i64, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<(i64), String> {
+pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins: i64, preference_id: i64, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<i64, String> {
 
     let break_session = BreakSessions {
         intervention_id,
@@ -249,8 +239,6 @@ pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins
     };
 
     on_break.on_break.store(true, Ordering::SeqCst);
-
-    println!("Break update: {:?}", break_session);
 
     let break_id = insert_break_sessions(&config.paths.database_path, &break_session).map_err(|e| e.to_string())?;
 
@@ -268,7 +256,6 @@ pub fn break_end(end_break: EndBreak, on_break: State<OnBreak>, config: State<Ap
     let planned_end_ts = start_ts + (planned_mins * 60);
     let returned_on_time = end_time <= planned_end_ts;
 
-    println!("Break ended: session {}, on time: {}", end_break.break_session_id, returned_on_time);
     let mut current_break_id = on_break.break_id.lock().unwrap();
     *current_break_id = Some(end_break.break_session_id);
 
@@ -302,7 +289,7 @@ pub fn open_break_window(
     break_session_id: i64,
     intervention_id: i64,
 ) -> Result<(), String> {
-    use tauri::WebviewUrl;
+    
     use tauri::WebviewWindowBuilder;
 
     let init_data = BreakInitData {
@@ -317,8 +304,7 @@ pub fn open_break_window(
         let mut slot = pending_state.data.lock().map_err(|e| e.to_string())?;
         *slot = Some(init_data.clone());
     }
-
-    println!("Opening break window from configured app window");
+    
     if let Some(window) = app_handle.get_webview_window("break") {
         let _ = window.unminimize();
         let _ = window.center();
@@ -506,12 +492,27 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
     let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path)
         .map_err(|e| e.to_string())?;
 
-    let retraining_needed = correction_rate > 0.25 && labelled_count >= 50;
+    // check if retrained within last 2 days
+    let two_days_secs: i64 = 2 * 24 * 60 * 60;
+    let last_retrained = get_setting(&config.paths.database_path, "last_retrained_at")
+        .unwrap_or(None)
+        .and_then(|v| v.parse::<i64>().ok())
+        .unwrap_or(0);
+
+    let now = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_secs() as i64;
+
+    let recently_retrained = (now - last_retrained) < two_days_secs;
+
+    let retraining_needed = !recently_retrained && correction_rate > 0.25 && labelled_count >= 50;
 
     println!(
-        "Retraining check — correction rate: {:.2}%, labelled rows: {}, needed: {}",
+        "Retraining check — correction rate: {:.2}%, labelled rows: {}, recently retrained: {}, needed: {}",
         correction_rate * 100.0,
         labelled_count,
+        recently_retrained,
         retraining_needed
     );
 
@@ -524,18 +525,14 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
 
 
 
-
 #[tauri::command]
 pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model_state: State<ModelState>) -> Result<RetrainingResult, String> {
     let db_path = config.paths.database_path.to_str().ok_or("Invalid database path")?.to_string();
 
     let model_output_path = config.paths.model_path.to_str().ok_or("Invalid model path")?.to_string();
 
-    println!("Triggering retraining via sidecar...");
-    println!("DB path: {}", db_path);
-    println!("Model output: {}", model_output_path);
 
-    // Spawn the sidecar — Tauri resolves the correct binary for the current platform
+    // Spawn] sidecar, Tauri resolves correct binary for current platform
     let sidecar_command = app_handle.shell().sidecar("retrain")
         .map_err(|e| format!("Failed to find retrain sidecar: {}", e))?.args([&db_path, &model_output_path]);
 
@@ -571,6 +568,12 @@ pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model
 
     clear_old_events(&config.paths.database_path)
         .map_err(|e| format!("Failed to clear old events: {}", e))?;
+
+    save_setting(
+        &config.paths.database_path,
+        "last_retrained_at",
+        &chrono::Utc::now().timestamp().to_string(),
+    ).map_err(|e| format!("Failed to save retrain timestamp: {}", e))?;
 
     Ok(RetrainingResult {
         success: true,

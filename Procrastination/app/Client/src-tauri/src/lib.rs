@@ -1,5 +1,3 @@
-// Learn more aboupub(crate)pub(crate)t Tauri commands at https://tauri.app/develop/calling-rust/
-
 pub mod models;
 pub mod capture;
 pub mod database;
@@ -8,7 +6,7 @@ pub mod api;
 pub mod ml;
 pub mod intervention;
 
-use std::path::Path;
+
 use ml::inference::load_model;
 
 use std::sync::{Arc, Mutex};
@@ -32,10 +30,10 @@ pub fn run() {
             app.manage(app_config.clone());
 
             let model_path = if app_config.paths.model_path.exists() {
-                println!("Loading retrained model from: {:?}", app_config.paths.model_path);
+                // println!("Loading retrained model from: {:?}", app_config.paths.model_path);
                 app_config.paths.model_path.clone()
             } else {
-                println!("No retrained model found, loading bundled baseline...");
+                // println!("No retrained model found, loading bundled baseline...");
                 app.path().resource_dir()
                     .expect("Failed to get resource path")
                     .join("resources/baseline_model.onnx")

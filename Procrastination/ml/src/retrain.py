@@ -29,7 +29,7 @@ FEATURE_COLUMNS = [
 MIN_LABELLED_ROWS = 50
 CORRECTION_RATE_THRESHOLD = 0.25
 
-#Remove coalesce after retrained once. DELETE
+
 def load_labelled_data(db_path: str) -> pd.DataFrame:
     print(f"Connecting to database: {db_path}")
 

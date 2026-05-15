@@ -1,8 +1,6 @@
-// src-tauri/src/database/sqlite.rs
 use rusqlite::{params, Connection, Result};
 use std::path::Path;
 use std::time::{SystemTime, UNIX_EPOCH};
-use tauri::menu::NativeIcon::User;
 use crate::models::models::{ActivityScore, EndBreak, FocusScore, IdleFocusedPackage, PredictionHistoryRow, PreferenceUpdate, StateDistribution, UpdateIntervention};
 use crate::models::table_structs::{FeatureVectors, Input, Predictions, Interventions, UserPreferences, BreakSessions};
 
@@ -113,7 +111,6 @@ pub fn initialize_database(db_path: &Path) -> Result<Connection> {
         "
     )?;
 
-    println!("Database schema initialized successfully.");
     Ok(conn)
 }
 
@@ -152,7 +149,7 @@ pub fn insert_events_conn(conn: &Connection, input: &Input) -> Result<()> {
     Ok(())
 }
 
-pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64)> {
+pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -161,13 +158,11 @@ pub fn insert_features(db_path: &Path, features: &FeatureVectors) -> Result<(i64
         params![features.timestamp, features.typing_speed, features.repetitive_key_ratio, features.mouse_velocity, features.idle_ratio, features.window_switch_frequency, features.scroll_velocity]
     )?;
 
-    println!("Data added into FEATURE database: {:?}", features);
-
     let id = conn.last_insert_rowid();
-    Ok((id))
+    Ok(id)
 }
 
-pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(i64)> {
+pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -178,10 +173,10 @@ pub fn insert_predictions(db_path: &Path, predictions: &Predictions) -> Result<(
 
     let id = conn.last_insert_rowid();
 
-    Ok((id))
+    Ok(id)
 }
 
-pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<(i64)> {
+pub fn insert_interventions(db_path: &Path, interventions: &Interventions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -206,7 +201,7 @@ pub fn insert_user_preference(db_path: &Path, preference: &UserPreferences) -> R
     Ok(())
 }
 
-pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<(i64)> {
+pub fn insert_break_sessions(db_path: &Path, break_sessions: &BreakSessions) -> Result<i64> {
     let conn = open_connection(db_path)?;
 
     conn.execute(
@@ -584,12 +579,11 @@ pub fn clear_old_events(db_path: &Path) -> Result<()> {
 
     let seven_days_ago = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 - (5 * 24 * 60 * 60);//days * hours * mins * secs
 
-    let deleted = conn.execute(
+    let _deleted = conn.execute(
         "DELETE FROM input_events WHERE timestamp < ?1",
         params![seven_days_ago],
     )?;
 
-    println!("Cleared {} old input_events rows", deleted);
     Ok(())
 }
 

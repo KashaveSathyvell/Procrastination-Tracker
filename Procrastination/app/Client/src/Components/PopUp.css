@@ -1,9 +1,13 @@
-/* PopUp.css */
+
 .popup-overlay {
     position: fixed;
-    bottom: 2rem;
-    right: 2rem;
+    inset: 0;
     z-index: 1000;
+    background-color: var(--bg-primary);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 2rem;
 }
 
 .popup-box {
