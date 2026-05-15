@@ -119,6 +119,7 @@ pub struct RetrainingResult {
 #[serde(rename_all = "camelCase")]
 pub struct StreakSettings {
     pub focused_streak_window: i64,
+    pub idle_streak_window: i64,
 }
 
 

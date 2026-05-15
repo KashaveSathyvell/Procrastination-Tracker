@@ -14,7 +14,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 mod config;
 use config::AppConfig;
-use api::commands::{start_collect, stop_collect, intervention_update, break_start, break_end, extend_break, open_break_window, close_break_window, get_break_init_data, preference_exist, get_preference, save_user_activity, update_label_streak, check_retraining_needed, trigger_retraining, get_saved_activities, get_analytics_stats, get_analytics_focus_score, get_history, get_activity_scores, get_recent_predictions, get_total_predictions_today, delete_activity, get_streak_settings, save_streak_settings, trigger_manual_intervention};
+use api::commands::{start_collect, stop_collect, intervention_update, break_start, break_end, extend_break, open_break_window, close_break_window, get_break_init_data, preference_exist, get_preference, save_user_activity, update_label_streak, check_retraining_needed, trigger_retraining, get_saved_activities, get_analytics_stats, get_analytics_focus_score, get_history, get_activity_scores, get_recent_predictions, get_total_predictions_today, delete_activity, get_streak_settings, save_streak_settings, trigger_manual_intervention, get_state_timeline};
 use models::models::{ThreadStop, ModelState, OnBreak, BreakInitData};
 use crate::database::sqlite::initialize_database;
 
@@ -57,7 +57,7 @@ pub fn run() {
         })
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_shell::init())
-        .invoke_handler(tauri::generate_handler![start_collect, stop_collect, intervention_update, break_start, break_end, extend_break, open_break_window, close_break_window, get_break_init_data, preference_exist, get_preference, save_user_activity, update_label_streak, check_retraining_needed, trigger_retraining, get_saved_activities, get_analytics_stats, get_analytics_focus_score, get_history, get_activity_scores, get_recent_predictions, get_total_predictions_today, delete_activity, get_streak_settings, save_streak_settings, trigger_manual_intervention])
+        .invoke_handler(tauri::generate_handler![start_collect, stop_collect, intervention_update, break_start, break_end, extend_break, open_break_window, close_break_window, get_break_init_data, preference_exist, get_preference, save_user_activity, update_label_streak, check_retraining_needed, trigger_retraining, get_saved_activities, get_analytics_stats, get_analytics_focus_score, get_history, get_activity_scores, get_recent_predictions, get_total_predictions_today, delete_activity, get_streak_settings, save_streak_settings, trigger_manual_intervention, get_state_timeline])
         .on_window_event(|window, event| {
             if !matches!(
                 event,

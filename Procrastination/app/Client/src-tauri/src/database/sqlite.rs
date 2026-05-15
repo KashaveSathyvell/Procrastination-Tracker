@@ -803,5 +803,71 @@ pub fn get_prediction_history(db_path: &Path, since_timestamp: i64, state_filter
 }
 
 
+pub fn get_state_timeline(db_path: &Path, since_timestamp: i64, bucket_seconds: i64) -> Result<Vec<(i64, String)>> {
+    let conn = open_connection(db_path)?;
+
+    // for each time bucket, get the most frequent state
+    let mut stmt = conn.prepare(
+        "SELECT
+            (timestamp / ?1) * ?1 AS bucket,
+            predicted_state,
+            COUNT(*) as cnt
+         FROM predictions
+         WHERE timestamp >= ?2
+         GROUP BY bucket, predicted_state
+         ORDER BY bucket ASC, cnt DESC"
+    )?;
+
+    let rows = stmt.query_map(params![bucket_seconds, since_timestamp], |row| {
+        Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+    })?;
+
+    // keep only the dominant state per bucket
+    let mut timeline: Vec<(i64, String)> = Vec::new();
+    let mut last_bucket: i64 = -1;
+    for row in rows {
+        let (bucket, state) = row?;
+        if bucket != last_bucket {
+            timeline.push((bucket, state));
+            last_bucket = bucket;
+        }
+    }
+
+    Ok(timeline)
+}
+
+pub fn get_state_percentages_by_bucket(db_path: &Path, since_timestamp: i64, bucket_seconds: i64) -> Result<Vec<(i64, String, f64)>> {
+    let conn = open_connection(db_path)?;
+
+    let mut stmt = conn.prepare(
+        "SELECT
+            (timestamp / ?1) * ?1 AS bucket,
+            predicted_state,
+            COUNT(*) as cnt
+         FROM predictions
+         WHERE timestamp >= ?2
+         GROUP BY bucket, predicted_state
+         ORDER BY bucket ASC"
+    )?;
+
+    let raw: Vec<(i64, String, i64)> = stmt.query_map(params![bucket_seconds, since_timestamp], |row| {
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+    })?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    let mut day_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
+    for (bucket, _, cnt) in &raw {
+        *day_totals.entry(*bucket).or_insert(0) += cnt;
+    }
+
+    let result = raw.iter().map(|(bucket, state, cnt)| {
+        let total = *day_totals.get(bucket).unwrap_or(&1) as f64;
+        (*bucket, state.clone(), (*cnt as f64 / total) * 100.0)
+    }).collect();
+
+    Ok(result)
+}
+
 
 

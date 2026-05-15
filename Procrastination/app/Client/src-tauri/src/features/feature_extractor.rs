@@ -35,6 +35,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
     let mut idle_counter = 0;
 
     let focused_streak_threshold: i32 = get_setting(db_path, "focused_streak_window").unwrap_or(None).and_then(|v| v.parse::<i32>().ok()).unwrap_or(15);
+    let idle_streak_threshold: i32 = get_setting(db_path, "idle_streak_window").unwrap_or(None).and_then(|v| v.parse::<i32>().ok()).unwrap_or(10);
 
     let mut post_break_remaining_windows = 0;
     let mut post_break_scores: Vec<f64> = Vec::new();
@@ -179,7 +180,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         }
 
         //Logic for intervention popups
-        let intervention_confidence = &prediction.confidence >= &confidence_threshold;
+        let intervention_confidence = &prediction.confidence >= &0.0; //&confidence_threshold;
 
         if (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
             focused_counter = 0;
@@ -215,7 +216,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         if prediction_counter == 3 {
             prediction_counter = 0;
             let intervention = Interventions {
-                predictions_id: prediction_id,
+                predictions_id: Some(prediction_id),
                 timestamp: window_end,
                 intervention_type: "PopUp".parse().unwrap(),
                 prediction_label: prediction.predicted_state.clone(),
@@ -250,7 +251,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 eprintln!("Failed to emit new_intervention: {}", e);
             }
         }
-        else if focused_counter == focused_streak_threshold {
+        else if focused_counter == 1{ // focused_streak_threshold {
 
             let focused_payload = IdleFocusedPackage {
                 timestamp: window_end,
@@ -267,7 +268,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
 
         }
-        else if idle_counter == 10 {
+        else if idle_counter == 1 { //idle_streak_threshold  {
 
             let idle_payload = IdleFocusedPackage {
                 timestamp: window_end,
