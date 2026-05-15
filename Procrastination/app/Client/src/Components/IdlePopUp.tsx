@@ -54,30 +54,6 @@ export const IdlePopUp = () => {
         return () => { unlistenFn.then(fn => fn()); };
     }, []);
 
-    // const handleConfirm = async (overwrite: boolean) => {
-    //     if (!payload) return;
-    //     setIsVisible(false);
-    //     setPayload(null);
-    //     try {
-    //         await invoke('update_label_streak', {
-    //             stateConfirmation: {
-    //                 timestamp: payload.timestamp,
-    //                 streakWindows: payload.streakWindows,
-    //                 label: selectedLabel,
-    //                 overwrite,
-    //             } as stateConfirmation
-    //         });
-    //     } catch (e) {
-    //         console.error('update_label_streak failed:', e);
-    //     }
-    //     try {
-    //         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    //         const win = getCurrentWindow();
-    //         if (win.label !== "main") await win.hide();
-    //     } catch (e) {
-    //         console.error("Failed to hide popup window:", e);
-    //     }
-    // };
     const handleConfirm = async (overwrite: boolean) => {
         if (!payload) return;
         setIsVisible(false);
@@ -96,13 +72,15 @@ export const IdlePopUp = () => {
             console.error('update_label_streak failed:', e);
         }
 
-        // If user was actually procrastinating/at risk, trigger intervention
         if (selectedLabel === 'Procrastinating' || selectedLabel === 'At Risk') {
             try {
                 await invoke('trigger_manual_intervention', {
                     label: selectedLabel,
                     timestamp: payload.timestamp,
                 });
+                
+                return;
+                
             } catch (e) {
                 console.error('Failed to trigger intervention after correction:', e);
             }
