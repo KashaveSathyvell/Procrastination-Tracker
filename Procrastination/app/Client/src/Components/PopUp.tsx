@@ -95,12 +95,11 @@ export const PopUp = () => {
         if (!interventionData.suggested_activity || 
             !interventionData.suggested_duration || 
             !interventionData.preference_id) {
-            // No activity available, just dismiss
             await close();
             return;
         }
 
-        await close();
+        setIsVisible(false); 
 
         try {
             await invoke('intervention_update', {
@@ -124,14 +123,9 @@ export const PopUp = () => {
                 breakSessionId: sessionId,
                 interventionId: interventionData.intervention_id,
             });
-            try {
-                const appWindow = getCurrentWindow();
-                await appWindow.setAlwaysOnTop(false);
-            } catch (e) {
-                console.error("Failed to disable always-on-top after break start:", e);
-            }
         } catch (e) {
             console.error('start_break failed:', e);
+            // restore popup if something went wrong
             setIntervention(interventionData);
             setSelectedLabel(interventionData.prediction_label);
             setShowCorrection(false);
@@ -142,7 +136,18 @@ export const PopUp = () => {
                 await appWindow.setAlwaysOnTop(true);
                 await appWindow.setFocus();
             } catch (showError) {
-                console.error("Failed to restore popup window after start break failure:", showError);
+                console.error("Failed to restore popup:", showError);
+            }
+            return;
+        } finally {
+            setIntervention(null);
+            setShowCorrection(false);
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+                if (appWindow.label !== "main") await appWindow.hide();
+            } catch (e) {
+                console.error("Failed to hide window:", e);
             }
         }
     };
@@ -175,16 +180,18 @@ export const PopUp = () => {
     const handleConfirmCorrection = async () => {
         if (!intervention) return;
         const interventionData = intervention;
+        
         if (!interventionData.suggested_activity || 
             !interventionData.suggested_duration || 
             !interventionData.preference_id) {
-            // No activity available, just dismiss
-            setIsVisible(false);
+            await close();
             return;
         }
-        // If user corrects to a still-bad state, we still suggest a break
+
         const isStillBadState = selectedLabel === "At Risk" || selectedLabel === "Procrastinating";
-        close();
+        
+        setIsVisible(false);
+
         try {
             await invoke('intervention_update', {
                 updatedIntervention: {
@@ -195,6 +202,7 @@ export const PopUp = () => {
                     predictedLabel: interventionData.prediction_label,
                 },
             });
+
             if (isStillBadState) {
                 const sessionId = await invoke<number>('break_start', {
                     interventionId: interventionData.intervention_id,
@@ -202,24 +210,28 @@ export const PopUp = () => {
                     plannedDurationMins: interventionData.suggested_duration,
                     preferenceId: interventionData.preference_id,
                 });
+                
                 await invoke('open_break_window', {
                     activity: interventionData.suggested_activity,
                     duration: interventionData.suggested_duration,
                     breakSessionId: sessionId,
                     interventionId: interventionData.intervention_id,
                 });
-                try {
-                    const appWindow = getCurrentWindow();
-                    await appWindow.setAlwaysOnTop(false);
-                    if (appWindow.label !== "main") {
-                        await appWindow.hide();
-                    }
-                } catch (e) {
-                    console.error("Failed to disable always-on-top after break start:", e);
-                }
             }
         } catch (e) {
-            console.error('correction failed:', e);
+            console.error('Correction or break launch failed:', e);
+        } finally {
+            setIntervention(null);
+            setShowCorrection(false);
+            try {
+                const appWindow = getCurrentWindow();
+                await appWindow.setAlwaysOnTop(false);
+                if (appWindow.label !== "main") {
+                    await appWindow.hide();
+                }
+            } catch (e) {
+                console.error("Failed to hide window after correction:", e);
+            }
         }
     };
 
