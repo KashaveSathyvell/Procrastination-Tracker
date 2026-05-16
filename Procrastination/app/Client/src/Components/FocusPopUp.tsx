@@ -107,7 +107,7 @@ export const FocusPopUp = () => {
 
     const handleCorrection = async () => {
         if (!payload) return;
-        setIsVisible(false);
+        setIsVisible(false); // unmount Focus UI, giveroom for Intervention UI
         setPayload(null);
 
         try {
@@ -123,13 +123,18 @@ export const FocusPopUp = () => {
             console.error('update_label_streak failed:', e);
         }
 
-        // If user corrects to a bad state, surface the intervention popup
-        if (selectedLabel === 'Procrastinating' || selectedLabel === 'At Risk') {
+        // Check if need to surface intervention
+        const needsIntervention = selectedLabel === 'Procrastinating' || selectedLabel === 'At Risk';
+
+        if (needsIntervention) {
             try {
                 await invoke('trigger_manual_intervention', {
                     label: selectedLabel,
                     timestamp: payload.timestamp,
                 });
+                
+                return; 
+                
             } catch (e) {
                 console.error('Failed to trigger intervention after correction:', e);
                 alert('Intervention trigger failed: ' + String(e));

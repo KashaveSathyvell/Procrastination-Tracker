@@ -179,8 +179,8 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_scores.clear();
         }
 
-        //Logic for intervention popups
-        let intervention_confidence = &prediction.confidence >= &0.0; //&confidence_threshold;
+        //threshold 4 intervention popups
+        let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
         if (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
             focused_counter = 0;
@@ -251,7 +251,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
                 eprintln!("Failed to emit new_intervention: {}", e);
             }
         }
-        else if focused_counter == 1{ // focused_streak_threshold {
+        else if focused_counter == focused_streak_threshold {
 
             let focused_payload = IdleFocusedPackage {
                 timestamp: window_end,
@@ -268,7 +268,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             }
 
         }
-        else if idle_counter == 1 { //idle_streak_threshold  {
+        else if idle_counter == idle_streak_threshold  {
 
             let idle_payload = IdleFocusedPackage {
                 timestamp: window_end,
@@ -348,6 +348,7 @@ pub fn extract_features(events: Vec<Input>, window_start: i64, window_end: i64) 
 
     let idle_ratio = (idle / window_time).min(1.0);
 
+    //how many windows user switche in a min
     let window_activity: Vec<&Input> = events.iter().filter(|event| {
         event.event_action != "MouseMove" &&
         event.event_action != "WheelScroll"

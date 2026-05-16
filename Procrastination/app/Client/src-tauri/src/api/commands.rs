@@ -491,15 +491,16 @@ pub fn save_streak_settings(settings: StreakSettings, config: State<AppConfig>) 
 
 #[tauri::command]
 pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingStats, String> {
-    let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path)
-        .map_err(|e| e.to_string())?;
-
-    // check if retrained within last 2 days
-    let two_days_secs: i64 = 2 * 24 * 60 * 60;
     let last_retrained = get_setting(&config.paths.database_path, "last_retrained_at")
         .unwrap_or(None)
         .and_then(|v| v.parse::<i64>().ok())
         .unwrap_or(0);
+
+    let (correction_rate, labelled_count) = get_retraining_stats(&config.paths.database_path, last_retrained)
+        .map_err(|e| e.to_string())?;
+
+
+    let two_days_secs: i64 = 2 * 24 * 60 * 60; //days * hours * mins * secs
 
     let now = SystemTime::now()
         .duration_since(UNIX_EPOCH)
