@@ -27,7 +27,7 @@ pub fn suggest_activity(db_path: &Path) -> ActivitySuggestion {
         }
     }
 
-    // untried first, then epsilon-greedy 70/30 exploit/explore
+    // untried first, then epsilongreedy 70/30 exploit/explore
     let chosen: UserPreferences = if !untried_activities.is_empty() {
         untried_activities.choose(&mut rand::rng()).unwrap().clone()
     } else {

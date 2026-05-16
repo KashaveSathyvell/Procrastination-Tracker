@@ -536,17 +536,17 @@ pub fn update_n_windows_before(db_path: &Path, update_package: IdleFocusedPackag
 
 
 //for checking if enough for retraining
-pub fn get_retraining_stats(db_path: &Path) -> Result<(f64, i64)> {
+pub fn get_retraining_stats(db_path: &Path, last_retrained: i64) -> Result<(f64, i64)> {
     let conn = open_connection(db_path)?;
 
-    let two_days_ago = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64 - (48 * 60 * 60);
-
+    // Check total predictions made since last retraining
     let total_predictions: i64 = conn.query_row(
         "SELECT COUNT(*) FROM predictions WHERE timestamp >= ?1",
-        params![two_days_ago],
+        params![last_retrained],
         |row| row.get(0)
     )?;
 
+    // Calculate correction rate for new predictions on;y
     let correction_rate = if total_predictions == 0 {
         0.0
     } else {
@@ -554,23 +554,24 @@ pub fn get_retraining_stats(db_path: &Path) -> Result<(f64, i64)> {
             "SELECT COUNT(*) FROM predictions
              WHERE timestamp >= ?1
              AND was_corrected = 1",
-            params![two_days_ago],
+            params![last_retrained],
             |row| row.get(0)
         )?;
         corrected as f64 / total_predictions as f64
     };
 
+    //only count predictions since last retraining
     let labelled_count: i64 = conn.query_row(
         "SELECT COUNT(*) FROM feature_vectors
          WHERE truth_label IS NOT NULL
-         AND truth_label != 'Break'",
-        params![],
+         AND truth_label != 'Break'
+         AND timestamp >= ?1",
+        params![last_retrained],
         |row| row.get(0)
     )?;
 
     Ok((correction_rate, labelled_count))
 }
-
 
 
 //clear input events after retrainng

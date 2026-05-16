@@ -234,6 +234,18 @@ def main():
     # Export
     export_onnx(model, model_output_path)
 
+
+
+    import json
+    importances_path = os.path.join(os.path.dirname(model_output_path), "feature_importances.json")
+    try:
+        with open(importances_path, "w") as f:
+            json.dump(model.feature_importances_.tolist(), f)
+        print("Saved feature importances to JSON.")
+    except Exception as e:
+        print(f"Warning: Could not save feature importances: {e}")
+    # ---------------------------------------------------
+
     # Verify
     if not verify_model(model_output_path):
         print("FATAL: Model verification failed — not replacing existing model")

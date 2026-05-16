@@ -161,18 +161,18 @@ export const Analytics = () => {
     const comparisonMessage = useMemo(() => {
         if (range !== "today") return null;
         if (!focusPayload || !yesterdayFocus) return null;
-        const todayScore = Math.round(focusPayload.score);
-        const yesterdayScore = Math.round(yesterdayFocus.score);
-        const diff = todayScore - yesterdayScore;
-        if (Math.abs(diff) < 3) return null; // too small to mention
+        const todayPct = Math.round(focusPayload.focused_percentage);
+        const yesterdayPct = Math.round(yesterdayFocus.focused_percentage);
+        const diff = todayPct - yesterdayPct;
+        if (Math.abs(diff) < 3) return null;
         if (diff > 0) {
             return {
-                text: `You're ${diff} points more focused today than yesterday. Keep it going!`,
+                text: `You've been ${diff}% more focused today than yesterday. Keep it going!`,
                 positive: true,
             };
         } else {
             return {
-                text: `Your focus is ${Math.abs(diff)} points lower than yesterday — you've got this, every session is a fresh start.`,
+                text: `Focus is down ${Math.abs(diff)}% compared to yesterday — you've got this, every session is a fresh start.`,
                 positive: false,
             };
         }
