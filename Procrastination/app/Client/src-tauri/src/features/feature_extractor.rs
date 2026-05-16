@@ -40,6 +40,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
     let mut post_break_remaining_windows = 0;
     let mut post_break_scores: Vec<f64> = Vec::new();
     let mut resume_from_ts: Option<i64> = None;
+    let mut last_intervention_ts: i64 = 0;
 
     thread::sleep(Duration::from_secs(60));
 
@@ -57,8 +58,12 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_scores.clear();
             end_break.store(false, std::sync::atomic::Ordering::SeqCst);
             // make sure window with  break time event is not computed
-            //  only resume predictions 1 min after user hits "I'm back".
-            resume_from_ts = Some(SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64);
+            //  only resume predictions 1 min after user hits "I'm back
+            let now_ts = SystemTime::now().duration_since(UNIX_EPOCH).unwrap_or_default().as_secs() as i64;
+            resume_from_ts = Some(now_ts);
+
+            //for cooldown timer
+            last_intervention_ts = now_ts;
         }
 
         let start_time = std::time::Instant::now();
@@ -179,7 +184,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             post_break_scores.clear();
         }
 
-        //threshold 4 intervention popups
+        //threshold for intervention popups
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
         if (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
@@ -212,6 +217,10 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             idle_counter = 0;
         }
 
+        if window_end - last_intervention_ts < 600 {
+            continue; // Skip popup, cooldown still actie
+        }
+        last_intervention_ts = window_end;
 
         if prediction_counter == 3 {
             prediction_counter = 0;

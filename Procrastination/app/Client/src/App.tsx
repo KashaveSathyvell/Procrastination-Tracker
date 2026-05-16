@@ -136,12 +136,19 @@ function App() {
   useEffect(() => {
     if (!hasPreferences) return;
 
-    invoke<RetrainingStats>("check_retraining_needed")
+    const checkStats = () => {
+      invoke<RetrainingStats>("check_retraining_needed")
         .then((stats) => {
             const showBanner = stats.retraining_needed && stats.correction_rate >= 0.25 && stats.labelled_count >= 70;
             setRetrainingBanner(showBanner);
         })
         .catch(() => {});
+    };
+
+    checkStats(); 
+    const intervalId = setInterval(checkStats, 5 * 60 * 1000); 
+
+    return () => clearInterval(intervalId); 
   }, [hasPreferences]);
 
   useEffect(() => {
@@ -157,7 +164,7 @@ function App() {
     };
 
     setup().catch(() => {
-      // If listener setup fails, Dashboard simply remains on hydrated/empty state.
+      // If listener setup fails, Dashboard simply remains on empty state.
     });
 
     return () => {

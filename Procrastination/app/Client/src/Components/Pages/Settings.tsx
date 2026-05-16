@@ -126,6 +126,8 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
 
   useEffect(() => {
     loadRetrainingStats();
+    const intervalId = setInterval(loadRetrainingStats, 5 * 60 * 1000);
+    return () => clearInterval(intervalId);
   }, [loadRetrainingStats]);
 
   useEffect(() => {
@@ -499,7 +501,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       <section className="card settings-section">
         <h3 className="section-title">About</h3>
         <p>FocusGuard</p>
-        <p className="status-secondary">Version 0.1.5</p>
+        <p className="status-secondary">Version 0.1.6</p>
         <p className="status-secondary">Procrastination detection and intervention system</p>
       </section>
     </div>
