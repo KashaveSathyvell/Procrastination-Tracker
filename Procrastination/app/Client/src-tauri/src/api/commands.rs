@@ -10,7 +10,7 @@ use tauri::AppHandle;
 use tauri_plugin_shell::ShellExt;
 
 use crate::capture::logging::{logging};
-use crate::database::sqlite::{update_user_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows};
+use crate::database::sqlite::{update_user_label, insert_break_sessions, has_preferences, insert_user_preference, update_break, update_n_windows_before, get_retraining_stats, clear_old_events, get_user_saved_activities, get_prediction_stats, get_focus_score, get_prediction_history, delete_user_preference, get_setting, save_setting, get_predictions_count_today, get_break_plan, extend_break_planned_duration, prediction_corrected_n_windows, get_state_counts_by_bucket};
 use crate::features::feature_extractor::run_extractor;
 use crate::PendingBreakData;
 use tauri::{Emitter, Manager, State};
@@ -632,9 +632,11 @@ pub fn get_history(range_days: i64, state_filter: Option<String>, config: State<
 
 
 #[tauri::command]
-pub fn get_state_timeline(range_days: i64, config: State<AppConfig>) -> Result<Vec<(i64, String, f64)>, String> {
+pub fn get_state_timeline(range_days: i64, config: State<AppConfig>) -> Result<Vec<(i64, String, i64)>, String> {
     let since = since_timestamp(range_days);
     let bucket_seconds = if range_days <= 1 { 3600i64 } else { 86400i64 };
-    crate::database::sqlite::get_state_percentages_by_bucket(&config.paths.database_path, since, bucket_seconds)
+
+
+    get_state_counts_by_bucket(&config.paths.database_path, since, bucket_seconds)
         .map_err(|e| e.to_string())
 }
