@@ -29,7 +29,7 @@ fn show_popup_window(app_handle: &AppHandle) {
 }
 
 pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mutex<Session>>, app_handle: &AppHandle, on_break: &Arc<AtomicBool>, end_break: &Arc<AtomicBool>, break_id: &Arc<Mutex<Option<i64>>>) {
-    let confidence_threshold = 0.75;  //Should I reduce the score? Ask spv
+    let confidence_threshold = 0.75;
     let mut prediction_counter = 0;
     let mut focused_counter = 0;
     let mut idle_counter = 0;
@@ -187,7 +187,7 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
         //threshold for intervention popups
         let intervention_confidence = &prediction.confidence >= &confidence_threshold;
 
-        if (&prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk") {
+        if &prediction.predicted_state == "Procrastinating" || &prediction.predicted_state == "At Risk" {
             focused_counter = 0;
             idle_counter = 0;
 
@@ -217,47 +217,53 @@ pub fn run_extractor(db_path: &Path, running: &Arc<AtomicBool>, session: &Arc<Mu
             idle_counter = 0;
         }
 
-        if window_end - last_intervention_ts < 600 {
-            continue; // Skip popup, cooldown still actie
-        }
-        last_intervention_ts = window_end;
-
         if prediction_counter == 3 {
             prediction_counter = 0;
-            let intervention = Interventions {
-                predictions_id: Some(prediction_id),
-                timestamp: window_end,
-                intervention_type: "PopUp".parse().unwrap(),
-                prediction_label: prediction.predicted_state.clone(),
-                user_label: None,
-                dismissed: false,
-            };
 
-            let intervention_id = match insert_interventions(db_path, &intervention) {
-                Ok(id) => id,
-                Err(e) => {
-                    eprintln!("Failed to insert intervention: {}", e);
-                    continue;
+            if window_end - last_intervention_ts < 600 {
+                
+            } else {
+                last_intervention_ts = window_end;
+
+                let intervention = Interventions {
+                    predictions_id: Some(prediction_id),
+                    timestamp: window_end,
+                    intervention_type: "PopUp".to_string(),
+                    prediction_label: prediction.predicted_state.clone(),
+                    user_label: None,
+                    dismissed: false,
+                };
+
+                let intervention_id = match insert_interventions(db_path, &intervention) {
+                    Ok(id) => id,
+                    Err(e) => {
+                        eprintln!("Failed to insert intervention: {}", e);
+                        // don't continue here either, fall through to sleep
+                        let elapsed = start_time.elapsed();
+                        let sleep = Duration::from_secs(60).saturating_sub(elapsed);
+                        thread::sleep(sleep);
+                        continue;
+                    }
+                };
+
+                let activity_suggestion = suggest_activity(db_path);
+
+                let payload = InterventionPackage {
+                    intervention_id,
+                    timestamp: window_end,
+                    intervention_type: "PopUp".to_string(),
+                    prediction_label: prediction.predicted_state,
+                    confidence,
+                    suggested_activity: Option::from(activity_suggestion.activity),
+                    suggested_duration: Option::from(activity_suggestion.random_duration),
+                    preference_id: Option::from(activity_suggestion.preference_id),
+                };
+
+                show_popup_window(&app_handle);
+
+                if let Err(e) = app_handle.emit("new_intervention", payload) {
+                    eprintln!("Failed to emit new_intervention: {}", e);
                 }
-            };
-
-            let activity_suggestion = suggest_activity(db_path);
-
-            let payload = InterventionPackage {
-                intervention_id,
-                timestamp: window_end,
-                intervention_type: "PopUp".to_string(),
-                prediction_label: prediction.predicted_state,
-                confidence,
-                suggested_activity: Option::from(activity_suggestion.activity),
-                suggested_duration: Option::from(activity_suggestion.random_duration),
-                preference_id: Option::from(activity_suggestion.preference_id),
-            };
-
-            show_popup_window(&app_handle);
-
-            if let Err(e) = app_handle.emit("new_intervention", payload) {
-                eprintln!("Failed to emit new_intervention: {}", e);
             }
         }
         else if focused_counter == focused_streak_threshold {

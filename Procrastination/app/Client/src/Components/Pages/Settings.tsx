@@ -420,9 +420,12 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
               <p className="metric-value">
                   {retrainingStatsLoading ? "…" : accuracyPercent !== null ? `${accuracyPercent}%` : "—"}
               </p>
+              <p className="status-secondary" style={{ marginTop: "4px", fontSize: "12px" }}>
+                  Since last update
+              </p>
           </div>
           <div className="metric-card">
-              <p className="metric-label">Labelled training rows</p>
+              <p className="metric-label">New training rows</p>
               <p className="metric-value">
                   {retrainingStatsLoading
                       ? "…"
@@ -501,7 +504,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       <section className="card settings-section">
         <h3 className="section-title">About</h3>
         <p>FocusGuard</p>
-        <p className="status-secondary">Version 0.1.6</p>
+        <p className="status-secondary">Version 0.1.7</p>
         <p className="status-secondary">Procrastination detection and intervention system</p>
       </section>
     </div>
