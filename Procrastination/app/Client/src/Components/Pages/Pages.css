@@ -788,3 +788,67 @@
     font-weight: 500;
     margin: 0;
 }
+
+
+.state-time-summary {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 16px;
+    margin-top: 14px;
+    padding-top: 12px;
+    border-top: 1px solid var(--border);
+}
+
+.state-time-item {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+}
+
+.state-time-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    background: currentColor;
+    flex-shrink: 0;
+}
+
+.state-time-label {
+    font-size: 12px;
+    color: var(--text-secondary);
+}
+
+.state-time-value {
+    font-size: 12px;
+    font-weight: 500;
+}
+
+.chart-tooltip {
+    background: var(--bg-surface);
+    border: 1px solid var(--border-card);
+    border-radius: 8px;
+    padding: 8px 12px;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+}
+
+.chart-tooltip-time {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin: 0;
+}
+
+.chart-tooltip-total {
+    font-size: 11px;
+    color: var(--text-secondary);
+    margin: 0;
+    padding-bottom: 4px;
+    border-bottom: 1px solid var(--border);
+}
+
+.chart-tooltip-row {
+    font-size: 12px;
+    font-weight: 500;
+    margin: 0;
+}

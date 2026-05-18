@@ -837,7 +837,7 @@ pub fn get_state_timeline(db_path: &Path, since_timestamp: i64, bucket_seconds: 
     Ok(timeline)
 }
 
-pub fn get_state_percentages_by_bucket(db_path: &Path, since_timestamp: i64, bucket_seconds: i64) -> Result<Vec<(i64, String, f64)>> {
+pub fn get_state_counts_by_bucket(db_path: &Path, since_timestamp: i64, bucket_seconds: i64) -> Result<Vec<(i64, String, i64)>> {
     let conn = open_connection(db_path)?;
 
     let mut stmt = conn.prepare(
@@ -851,24 +851,12 @@ pub fn get_state_percentages_by_bucket(db_path: &Path, since_timestamp: i64, buc
          ORDER BY bucket ASC"
     )?;
 
+    // Just fetch and return the raw counts directly! No more percentage math.
     let raw: Vec<(i64, String, i64)> = stmt.query_map(params![bucket_seconds, since_timestamp], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get(2)?))
     })?
         .filter_map(|r| r.ok())
         .collect();
 
-    let mut day_totals: std::collections::HashMap<i64, i64> = std::collections::HashMap::new();
-    for (bucket, _, cnt) in &raw {
-        *day_totals.entry(*bucket).or_insert(0) += cnt;
-    }
-
-    let result = raw.iter().map(|(bucket, state, cnt)| {
-        let total = *day_totals.get(bucket).unwrap_or(&1) as f64;
-        (*bucket, state.clone(), (*cnt as f64 / total) * 100.0)
-    }).collect();
-
-    Ok(result)
+    Ok(raw)
 }
-
-
-

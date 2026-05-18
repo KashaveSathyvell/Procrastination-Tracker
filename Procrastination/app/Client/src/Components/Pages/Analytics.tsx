@@ -141,20 +141,34 @@ export const Analytics = () => {
     }, [focusPayload]);
     
     const chartData = useMemo(() => {
-      const byBucket: Record<number, Record<string, number>> = {};
-      for (const [bucket, state, pct] of timeline) {
-          if (!byBucket[bucket]) byBucket[bucket] = {};
-          byBucket[bucket][state] = pct;
-      }
-      return Object.entries(byBucket)
-          .sort(([a], [b]) => Number(a) - Number(b))
-          .map(([bucket, states]) => ({
-              bucket: Number(bucket),
-              Focused: states["Focused"] ?? 0,
-              "At Risk": states["At Risk"] ?? 0,
-              Procrastinating: states["Procrastinating"] ?? 0,
-              Idle: states["Idle"] ?? 0,
-          }));
+        const byBucket: Record<number, Record<string, number>> = {};
+        const totals: Record<number, number> = {};
+
+        // Group  raw counts (minutes) by bucket and sum the total minutes
+        for (const [bucket, state, count] of timeline) {
+            if (!byBucket[bucket]) byBucket[bucket] = {};
+            byBucket[bucket][state] = count;
+            totals[bucket] = (totals[bucket] ?? 0) + count;
+        }
+
+        //Convert to percentages for  graph, but inject the raw total for the tooltip
+        return Object.entries(byBucket)
+        .sort(([a], [b]) => Number(a) - Number(b))
+        .map(([bucketStr, states]) => {
+            const bucket = Number(bucketStr);
+            const totalMins = totals[bucket] || 1; // prevent division by zero
+            
+            return {
+                bucket: bucket,
+                totalMins: totals[bucket], // Save raw minutes for tooltip
+                
+                // Convert raw counts into %
+                Focused: ((states["Focused"] ?? 0) / totalMins) * 100,
+                "At Risk": ((states["At Risk"] ?? 0) / totalMins) * 100,
+                Procrastinating: ((states["Procrastinating"] ?? 0) / totalMins) * 100,
+                Idle: ((states["Idle"] ?? 0) / totalMins) * 100,
+            };
+        });
     }, [timeline]);
 
     // comparison message between today and yesterday
@@ -210,7 +224,14 @@ export const Analytics = () => {
       }
     }, [chartData, range]);
 
-    
+
+    const formatDuration = (minutes: number): string => {
+        if (minutes < 60) return `${minutes}m`;
+        const h = Math.floor(minutes / 60);
+        const m = minutes % 60;
+        return m === 0 ? `${h}h` : `${h}h ${m}m`;
+    };
+
 
     // format X axis label based on range
     const formatXAxis = (bucket: number) => {
@@ -274,38 +295,70 @@ export const Analytics = () => {
                       </div>
                       <ResponsiveContainer width="100%" height={220}>
                           <LineChart data={chartData} margin={{ top: 8, right: 8, left: -10, bottom: 0 }}>
-                              <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
-                              <XAxis
-                                  dataKey="bucket"
-                                  tickFormatter={formatXAxis}
-                                  tick={{ fontSize: 11, fill: "var(--text-secondary)" }}
-                                  axisLine={false}
-                                  tickLine={false}
-                              />
-                              <YAxis
-                                  domain={[0, 100]}
-                                  tickFormatter={(v) => `${v}%`}
-                                  tick={{ fontSize: 10, fill: "var(--text-secondary)" }}
-                                  axisLine={false}
-                                  tickLine={false}
-                                  width={40}
-                              />
-                              <Tooltip
-                                  formatter={(value: any, name: any) => [`${Math.round(Number(value) || 0)}%`, name]}
-                                  contentStyle={{
-                                      background: "var(--bg-surface)",
-                                      border: "1px solid var(--border-card)",
-                                      borderRadius: "8px",
-                                      fontSize: "12px",
-                                      color: "var(--text-primary)"
-                                  }}
-                                  labelFormatter={(bucket) => formatXAxis(bucket)}
-                              />
-                              <Line type="monotone" dataKey="Focused" stroke="var(--success)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                              <Line type="monotone" dataKey="At Risk" stroke="var(--warning)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                              <Line type="monotone" dataKey="Procrastinating" stroke="var(--danger)" strokeWidth={2} dot={false} isAnimationActive={false} />
-                              <Line type="monotone" dataKey="Idle" stroke="var(--text-muted)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <CartesianGrid stroke="var(--border)" strokeDasharray="3 3" vertical={false} />
+                                <XAxis
+                                    dataKey="bucket"
+                                    tickFormatter={formatXAxis}
+                                    tick={{ fontSize: 11, fill: "var(--text-secondary)" }}
+                                    axisLine={false}
+                                    tickLine={false}
+                                />
+                                <YAxis
+                                    domain={[0, 100]}
+                                    tickFormatter={(v) => `${v}%`}
+                                    tick={{ fontSize: 10, fill: "var(--text-secondary)" }}
+                                    axisLine={false}
+                                    tickLine={false}
+                                    width={40}
+                                />
+                                <Tooltip
+                                    content={({ active, payload, label }) => {
+                                        if (!active || !payload?.length) return null;
+                                        const bucket = Number(label);
+                                        
+                                        // Read the raw total minutes directly from the payload we generated above
+                                        const totalMins = payload[0].payload.totalMins;
+
+                                        return (
+                                            <div className="chart-tooltip">
+                                                <p className="chart-tooltip-time">{formatXAxis(bucket)}</p>
+                                                {totalMins > 0 && (
+                                                    <p className="chart-tooltip-total">
+                                                        Tracked: {formatDuration(totalMins)}
+                                                    </p>
+                                                )}
+                                                {payload.map((entry: any) => (
+                                                    <p key={entry.dataKey} className="chart-tooltip-row" style={{ color: entry.stroke }}>
+                                                        {entry.dataKey}: {Math.round(Number(entry.value) || 0)}%
+                                                    </p>
+                                                ))}
+                                            </div>
+                                        );
+                                    }}
+                                />
+                                <Line type="monotone" dataKey="Focused" stroke="var(--success)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="At Risk" stroke="var(--warning)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="Procrastinating" stroke="var(--danger)" strokeWidth={2} dot={false} isAnimationActive={false} />
+                                <Line type="monotone" dataKey="Idle" stroke="var(--text-muted)" strokeWidth={2} dot={false} isAnimationActive={false} />
                           </LineChart>
+
+                          {range === "today" && stats && stats.total > 0 && (
+                            <div className="state-time-summary">
+                                {[
+                                    { label: "Focused", count: stats.focused_count, className: "state-focused" },
+                                    { label: "At Risk", count: stats.at_risk_count, className: "state-at-risk" },
+                                    { label: "Procrastinating", count: stats.procrastinating_count, className: "state-procrastinating" },
+                                    { label: "Idle", count: stats.idle_count, className: "state-idle" },
+                                ].map(({ label, count, className }) => (
+                                    <div key={label} className="state-time-item">
+                                        <span className={`state-time-dot ${className}`} />
+                                        <span className="state-time-label">{label}</span>
+                                        <span className={`state-time-value ${className}`}>{formatDuration(count)}</span>
+                                    </div>
+                                ))}
+                            </div>
+                        )}
+
                       </ResponsiveContainer>
                   </>
               )}
