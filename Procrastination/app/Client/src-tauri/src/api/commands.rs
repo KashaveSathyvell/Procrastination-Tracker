@@ -128,9 +128,6 @@ pub fn start_collect(app_handle: AppHandle, state: State<ThreadStop>, model_stat
                 _ => {}
             }
         }
-       //  for received in rx {
-       //      insert_events(Path::new("behavior.db"), &received);
-       // }
     });
 
 
@@ -218,7 +215,6 @@ pub fn intervention_update(updated_intervention: UpdateIntervention, config: Sta
 }
 
 
-//ERROR: PopUp.tsx:84 start_break failed: invalid args `plannedDurationMins` for command `break_start`: command break_start missing required key plannedDurationMins
 #[tauri::command]
 pub fn break_start(intervention_id: i64, activity: String, planned_duration_mins: i64, preference_id: i64, config: State<AppConfig>, on_break: State<OnBreak>) -> Result<i64, String> {
 
@@ -511,14 +507,6 @@ pub fn check_retraining_needed(config: State<AppConfig>) -> Result<RetrainingSta
 
     let retraining_needed = !recently_retrained && correction_rate > 0.25 && labelled_count >= 50;
 
-    println!(
-        "Retraining check — correction rate: {:.2}%, labelled rows: {}, recently retrained: {}, needed: {}",
-        correction_rate * 100.0,
-        labelled_count,
-        recently_retrained,
-        retraining_needed
-    );
-
     Ok(RetrainingStats {
         correction_rate,
         labelled_count,
@@ -535,7 +523,7 @@ pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model
     let model_output_path = config.paths.model_path.to_str().ok_or("Invalid model path")?.to_string();
 
 
-    // Spawn] sidecar, Tauri resolves correct binary for current platform
+    // Spawnsidecar, Tauri resolves correct binary for current platform
     let sidecar_command = app_handle.shell().sidecar("retrain")
         .map_err(|e| format!("Failed to find retrain sidecar: {}", e))?.args([&db_path, &model_output_path]);
 
@@ -558,7 +546,6 @@ pub fn trigger_retraining(app_handle: AppHandle, config: State<AppConfig>, model
     }
 
     // Reload model
-    println!("Reloading model from: {}", model_output_path);
     let new_session = load_model(std::path::PathBuf::from(&model_output_path))
         .map_err(|e| format!("Failed to load retrained model: {}", e))?;
 

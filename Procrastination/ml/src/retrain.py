@@ -208,8 +208,8 @@ def main():
         print(f"FATAL: After cleaning, only {len(X)} valid rows remain. Need {MIN_LABELLED_ROWS}")
         sys.exit(1)
 
-    # Split — use a small test set since real data is limited
-    # If we have fewer than 80 rows, skip test split and train on everything
+    # Split n use a small test set since real data is limited
+    # fewer than 80 rows, skip test split and train on everything
     if len(X) >= 80:
         X_train, X_test, y_train, y_test = train_test_split(
             X, y, test_size=0.2, random_state=42, stratify=y

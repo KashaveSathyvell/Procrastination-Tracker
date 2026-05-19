@@ -12,7 +12,7 @@ pub fn suggest_activity(db_path: &Path) -> ActivitySuggestion {
     let preference_list = get_all_preferences(db_path).unwrap();
     let mut pref_list_2 = preference_list.clone();
 
-    // most recently suggested activity — excluded from pool to avoid repetition
+    // most recently suggested activity is excluded from pool to avoid repetition
     let last = preference_list.iter()
         .max_by_key(|a| a.last_suggested);
 
@@ -40,14 +40,14 @@ pub fn suggest_activity(db_path: &Path) -> ActivitySuggestion {
         }
 
         if roll < 0.7 {
-            // exploit — pick highest focus score
+            // exploit = pick highest focus score
             let best = pref_list_2.iter()
                 .max_by(|a, b| a.average_focus_score
                     .partial_cmp(&b.average_focus_score)
                     .unwrap_or(std::cmp::Ordering::Equal));
             best.unwrap().clone()
         } else {
-            // explore — pick random
+            // explore = pick random
             pref_list_2.choose(&mut rand::rng()).unwrap().clone()
         }
     };

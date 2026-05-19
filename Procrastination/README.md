@@ -1,17 +1,19 @@
-Template created! To get started run:
-  cd Client
-  npm install
-  npm run tauri android init
+## Prerequisites
+To compile and run this application locally, please ensure the following environments are installed on your machine:
+* Node.js (v18+ recommended)
+* Rust & Cargo (Latest stable toolchain)
+* Python (v3.10+ for the ML Retraining Sidecar)
 
-For Desktop development, run:
-  npm run tauri dev
+## 🛠️ Step-by-Step Installation & Setup
 
-For Android development, run:
-  npm run tauri android dev
+Install Frontend Dependencies
+Navigate to the React Client directory and install the required Node modules.
 
-
-cd app/Client   -> then run npm run tauri dev
-
+cd app/Client
+npm install
 
 
-Activate venv folder command= cd ml  =>  .\venv\Scripts\activate
+Run the Application (Development Mode)
+Tauri will automatically compile the Rust backend and launch the React frontend. Note: The first Rust build may take a few minutes as it downloads the crates.
+
+npm run tauri dev

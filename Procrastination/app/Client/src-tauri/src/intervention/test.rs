@@ -1,9 +1,7 @@
 #[cfg(test)]
 mod tests {
     use std::time::{SystemTime, Duration};
-    // If your logic is inside jitai.rs, uncomment the line below:
-    // use super::super::jitai::*;
-
+    
     #[test]
     fn test_procrastination_threshold() {
         let recent_states = vec!["Procrastinating", "Procrastinating", "Procrastinating", "Procrastinating", "Procrastinating"];
