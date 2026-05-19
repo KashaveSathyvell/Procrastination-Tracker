@@ -504,7 +504,7 @@ export const Settings = ({ theme, setTheme }: SettingsProps) => {
       <section className="card settings-section">
         <h3 className="section-title">About</h3>
         <p>FocusGuard</p>
-        <p className="status-secondary">Version 0.1.8</p>
+        <p className="status-secondary">Version 0.1.9</p>
         <p className="status-secondary">Procrastination detection and intervention system</p>
       </section>
     </div>

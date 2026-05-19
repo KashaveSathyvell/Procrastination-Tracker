@@ -430,6 +430,19 @@ pub fn update_user_preferences(db_path: &Path, updated_preference: PreferenceUpd
 pub fn delete_user_preference(db_path: &Path, activity_name: String) -> Result<()> {
     let conn = open_connection(db_path)?;
 
+    let pref_id_result: Result<i64, _> = conn.query_row(
+        "SELECT id FROM user_preferences WHERE activity_name = ?1",
+        params![&activity_name],
+        |row| row.get(0)
+    );
+
+    if let Ok(pref_id) = pref_id_result {
+        conn.execute(
+            "UPDATE break_sessions SET preference_id = NULL WHERE preference_id = ?1",
+            params![pref_id],
+        )?;
+    }
+
     conn.execute(
         "DELETE FROM user_preferences WHERE activity_name = ?1",
         params![activity_name],
@@ -488,7 +501,6 @@ pub fn collect_events(db_path: &Path, window_start: i64, window_end: i64) -> Res
         "SELECT timestamp, event_type, event_action, key_code, mouse_x, mouse_y, wheel_x, wheel_y, button, active_window FROM input_events \
         WHERE timestamp BETWEEN ?1 AND ?2 \
         ORDER BY timestamp ASC",
-        // params![windowStart, windowEnd],
     )?;
 
     let rows = stmt.query_map(params![window_start, window_end], |row| {
@@ -736,7 +748,7 @@ pub fn get_prediction_history(db_path: &Path, since_timestamp: i64, state_filter
     let conn = open_connection(db_path)?;
 
     // Build query dynamically based on whether a state filter is applied
-    // We LEFT JOIN interventions to get the user_label if a correction was made
+    // LEFT JOIN interventions to get the user_label if a correction was made
     let rows = if let Some(state) = state_filter {
         let mut stmt = conn.prepare(
             "SELECT

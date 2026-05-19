@@ -268,7 +268,6 @@ export const Analytics = () => {
             {/* comparison banner */}
             {(comparisonMessage ?? weekComparisonMessage) && (
               <div className={`comparison-banner ${(comparisonMessage ?? weekComparisonMessage)!.positive ? "comparison-banner--positive" : "comparison-banner--neutral"}`}>
-                  <span>{(comparisonMessage ?? weekComparisonMessage)!.positive ? "🎯" : "💪"}</span>
                   <p>{(comparisonMessage ?? weekComparisonMessage)!.text}</p>
               </div>
             )}
