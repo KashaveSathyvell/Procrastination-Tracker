@@ -2,7 +2,7 @@
 
 A desktop application that detects procrastination in real time by analyzing behavioural patterns (typing speed, mouse movement, idle time, window switching) and intervenes with personalized micro-breaks before focus fully breaks down.
 
-Built as a final year project exploring whether passive HCI signals alone — no webcam, no self-reporting — can reliably predict when someone is about to disengage from work.
+Built as a final year project exploring whether passive HCI signals alone. There is no webcam, no self-reporting. It can reliably predict when someone is about to disengage from work.
 
 ## How it works
 
