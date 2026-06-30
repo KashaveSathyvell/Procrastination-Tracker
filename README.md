@@ -36,3 +36,30 @@ A **Human-in-the-Loop retraining pipeline** lets the model improve from real usa
 - **SQLite** — local storage for behavioural event logs and session history
 
 ## Architecture
+Behavioural event capture (Rust)
+↓
+60-second sliding window feature extraction
+↓
+ONNX Random Forest inference
+↓
+JITAI controller → Multi-Armed Bandit intervention selector
+↓
+React UI (break suggestions, session feedback)
+↓
+SQLite storage → Human-in-the-Loop retraining
+
+## Running locally
+
+```bash
+# Clone the repo
+git clone https://github.com/KashaveSathyvell/Procrastination-Tracker.git
+cd Procrastination-Tracker
+
+# Install dependencies
+npm install
+
+# Run in development mode
+npm run tauri dev
+```
+
+
