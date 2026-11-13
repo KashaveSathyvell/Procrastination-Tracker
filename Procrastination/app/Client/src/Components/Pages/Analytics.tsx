@@ -122,7 +122,7 @@ export const Analytics = () => {
       return () => { cancelled = true; };
     }, [rangeDays]);
 
-    // fetch yesterday's focus for comparison message — only relevant for "today" view
+    // fetch yesterday's focus for comparison message. only relevant for "today" view
     useEffect(() => {
         if (range !== "today") { setYesterdayFocus(null); return; }
         invoke<AnalyticsFocusScore>("get_analytics_focus_score", { rangeDays: 2 })
@@ -186,7 +186,7 @@ export const Analytics = () => {
             };
         } else {
             return {
-                text: `Focus is down ${Math.abs(diff)}% compared to yesterday — you've got this, every session is a fresh start.`,
+                text: `Focus is down ${Math.abs(diff)}% compared to yesterday - you've got this, every session is a fresh start.`,
                 positive: false,
             };
         }
@@ -218,7 +218,7 @@ export const Analytics = () => {
           };
       } else {
           return {
-              text: `Focus dipped ${Math.abs(diff)}% toward the end of ${periodLabel} — rest up and come back strong.`,
+              text: `Focus dipped ${Math.abs(diff)}% toward the end of ${periodLabel} - rest up and come back strong.`,
               positive: false,
           };
       }
@@ -280,7 +280,7 @@ export const Analytics = () => {
                   </div>
               ) : chartData.length === 0 ? (
                   <p className="analytics-empty-message status-secondary">
-                      No data for this period — start a monitoring session to see your timeline.
+                      No data for this period - start a monitoring session to see your timeline.
                   </p>
               ) : (
                   <>
@@ -409,7 +409,7 @@ export const Analytics = () => {
                         <p style={{ color: "var(--danger)" }}>Failed to load</p>
                     ) : (
                         <>
-                            <p className="metric-value">{focusDisplayScore !== null ? `${focusDisplayScore} / 100` : "—"}</p>
+                            <p className="metric-value">{focusDisplayScore !== null ? `${focusDisplayScore} / 100` : "-"}</p>
                             <p className="status-secondary">A higher score means more sustained focused windows.</p>
                         </>
                     )}
@@ -422,7 +422,7 @@ export const Analytics = () => {
                         </div>
                     ) : (
                         <>
-                            <p className="metric-value">{correctionPercent !== null ? `${correctionPercent}%` : "—"}</p>
+                            <p className="metric-value">{correctionPercent !== null ? `${correctionPercent}%` : "-"}</p>
                             <p className="status-secondary">Based on predictions since last model update</p>
                         </>
                     )}

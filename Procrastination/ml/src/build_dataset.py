@@ -123,7 +123,6 @@ def apply_labels(df):
     ]
     return df[final_columns]
 
-    # return df
 
 
 if __name__ == "__main__":

@@ -26,7 +26,7 @@ from sklearn.metrics import (
 )
 import onnxruntime as rt
 
-# ── constants ──────────────────────────────────────────────────────────────────
+# constants 
 
 FEATURE_COLUMNS = [
     'typing_speed',
@@ -48,7 +48,7 @@ LABEL_TO_INT = {v: k for k, v in LABEL_MAP.items()}
 
 CLASS_NAMES = ["Focused", "At Risk", "Procrastinating", "Idle"]
 
-# colour palette — matches the app's CSS variables as closely as matplotlib allows
+# colour palette = matches the app's CSS variables as closely as matplotlib allows
 PALETTE = {
     "Focused":        "#4ade80",
     "At Risk":        "#fbbf24",
@@ -58,7 +58,7 @@ PALETTE = {
 
 OUTPUT_DIR = os.path.join(os.path.dirname(__file__), "evaluation_outputs")
 
-# ── helpers ────────────────────────────────────────────────────────────────────
+#  helpers 
 
 def load_labelled_data(db_path: str) -> pd.DataFrame:
     print(f"\nConnecting to database: {db_path}")
@@ -169,7 +169,7 @@ def plot_feature_importance(session: rt.InferenceSession, output_dir: str, model
     import json
     importances = None
 
-    # Try to load from the JSON file we created during training
+    # Try to load from JSON file created during training
     json_path = os.path.join(os.path.dirname(model_path), "feature_importances.json")
     if os.path.exists(json_path):
         try:
@@ -357,7 +357,7 @@ def print_summary(y_true, y_pred, probabilities):
     print("=" * 60)
 
 
-# ── main ───────────────────────────────────────────────────────────────────────
+#  main 
 
 def main():
     if len(sys.argv) != 3:

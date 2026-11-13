@@ -80,31 +80,6 @@ export const FocusPopUp = () => {
         }
     };
 
-    // const handleCorrection = async () => {
-    //     if (!payload) return;
-    //     setIsVisible(false);
-    //     setPayload(null);
-    //     try {
-    //         await invoke('update_label_streak', {
-    //             stateConfirmation: {
-    //                 timestamp: payload.timestamp,
-    //                 streakWindows: payload.streakWindows,
-    //                 label: selectedLabel,
-    //                 overwrite: true,
-    //             } as stateConfirmation
-    //         });
-    //     } catch (e) {
-    //         console.error('update_label_streak failed:', e);
-    //     }
-    //     try {
-    //         const { getCurrentWindow } = await import("@tauri-apps/api/window");
-    //         const win = getCurrentWindow();
-    //         if (win.label !== "main") await win.hide();
-    //     } catch (e) {
-    //         console.error("Failed to hide popup window:", e);
-    //     }
-    // };
-
     const handleCorrection = async () => {
         if (!payload) return;
         setIsVisible(false); // unmount Focus UI, giveroom for Intervention UI

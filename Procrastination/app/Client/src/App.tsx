@@ -89,7 +89,7 @@ function App() {
   run().catch((err) => {
       if (cancelled) return;
       console.error("preference_exist failed (unexpected):", err);
-      // Leave as null — keep showing loading screen
+      // Leave as null and keep showing loading screen
   });
 
     return () => {
