@@ -1,6 +1,5 @@
-# ========================
 # Node / TypeScript
-# ========================
+
 node_modules/
 dist/
 dist-ssr/
@@ -14,25 +13,20 @@ yarn-debug.log*
 yarn-error.log*
 pnpm-debug.log*
 
-# ========================
+
 # Rust / Cargo
-# ========================
 target/
 Cargo.lock.bak
 **/*.rs.bk
 *.pdb
 
-# ========================
 # Tauri
-# ========================
 src-tauri/target/
 src-tauri/WixTools/
 src-tauri/binaries/
 
-# ========================
+
 # Python - Virtual Environments
-# (covers venv anywhere in project)
-# ========================
 venv/
 .venv/
 env/
@@ -42,9 +36,8 @@ ml/.venv/
 **/venv/
 **/.venv/
 
-# ========================
+
 # Python - General
-# ========================
 __pycache__/
 *.py[cod]
 *$py.class
@@ -59,9 +52,8 @@ __pycache__/
 *.ipynb_checkpoints/
 .ipynb_checkpoints/
 
-# ========================
+
 # ML / Data
-# ========================
 ml/data/raw/
 ml/data/processed/
 ml/models/*.onnx
@@ -70,21 +62,18 @@ ml/models/*.joblib
 *.h5
 *.hdf5
 
-# ========================
+
 # CSV / Dataset files
-# ========================
 *.csv
 
-# ========================
+
 # Database files
-# ========================
 *.db
 *.sqlite
 *.sqlite3
 
-# ========================
+
 # IDE / Editor
-# ========================
 .vscode/
 .idea/
 *.suo
@@ -96,9 +85,8 @@ ml/models/*.joblib
 .DS_Store
 Thumbs.db
 
-# ========================
+
 # Environment / Secrets
-# ========================
 .env
 .env.local
 .env.development.local
@@ -107,8 +95,7 @@ Thumbs.db
 *.pem
 *.key
 
-# ========================
+
 # Logs
-# ========================
 logs/
 *.log

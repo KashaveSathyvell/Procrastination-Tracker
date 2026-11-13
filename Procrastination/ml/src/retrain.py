@@ -168,7 +168,7 @@ def verify_model(model_path: str) -> bool:
 
         if predicted_label != 0:
             print("WARNING: Test input did not predict Focused — model may be miscalibrated")
-            # Don't fail on this — warn only, since real user data may shift the model
+            # Don't fail on this, warn only, since real user data may shift the model
 
         print("Verification passed")
         return True
@@ -244,7 +244,7 @@ def main():
         print("Saved feature importances to JSON.")
     except Exception as e:
         print(f"Warning: Could not save feature importances: {e}")
-    # ---------------------------------------------------
+
 
     # Verify
     if not verify_model(model_output_path):

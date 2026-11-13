@@ -863,7 +863,6 @@ pub fn get_state_counts_by_bucket(db_path: &Path, since_timestamp: i64, bucket_s
          ORDER BY bucket ASC"
     )?;
 
-    // Just fetch and return the raw counts directly! No more percentage math.
     let raw: Vec<(i64, String, i64)> = stmt.query_map(params![bucket_seconds, since_timestamp], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get(2)?))
     })?

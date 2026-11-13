@@ -280,7 +280,7 @@ pub fn open_break_window(
     break_session_id: i64,
     intervention_id: i64,
 ) -> Result<(), String> {
-    
+
     use tauri::WebviewWindowBuilder;
 
     let init_data = BreakInitData {
@@ -295,7 +295,7 @@ pub fn open_break_window(
         let mut slot = pending_state.data.lock().map_err(|e| e.to_string())?;
         *slot = Some(init_data.clone());
     }
-    
+
     if let Some(window) = app_handle.get_webview_window("break") {
         let _ = window.unminimize();
         let _ = window.center();
@@ -373,7 +373,7 @@ pub fn trigger_manual_intervention(
         preference_id: Some(activity_suggestion.preference_id),
     };
 
-    // Show the popup window and emit the event — PopUp.tsx handles the rest
+    // Show the popup window and emit the event - PopUp.tsx handles the rest
     if let Some(popup_window) = app_handle.get_webview_window("popup") {
         if let Some(monitor) = popup_window.current_monitor().unwrap_or(None) {
             let screen_size = monitor.size();
