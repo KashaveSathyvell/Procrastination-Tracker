@@ -14,6 +14,8 @@ https://github.com/user-attachments/assets/ae5f7767-d448-4caa-a101-09dd111d4f94
 
 ![Welcome Page](assets/WelcomePage.png)
 ![Dashboard](assets/Dashboard.png)
+![Intervention](assets/Intervention.png)
+![check-in](assets/check-in.png)
 ![Analytics](assets/Analytics.png)
 ![Settings](assets/Settings1.png)
 ![Settings](assets/Settings2.png)
