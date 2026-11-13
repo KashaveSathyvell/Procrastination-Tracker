@@ -12,11 +12,22 @@ https://github.com/user-attachments/assets/ae5f7767-d448-4caa-a101-09dd111d4f94
 
 ## Screenshots
 
+Welcome Page:
 ![Welcome Page](assets/WelcomePage.png)
+
+Dashboard:
 ![Dashboard](assets/Dashboard.png)
+
+Intervention pop-up:
 ![Intervention](assets/Intervention.png)
+
+Check In pop-up:
 ![check-in](assets/check-in.png)
+
+Analytics Page:
 ![Analytics](assets/Analytics.png)
+
+Settings Page:
 ![Settings](assets/Settings1.png)
 ![Settings](assets/Settings2.png)
 
