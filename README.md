@@ -2,7 +2,25 @@
 
 A desktop application that detects procrastination in real time by analyzing behavioural patterns (typing speed, mouse movement, idle time, window switching) and intervenes with personalized micro-breaks before focus fully breaks down.
 
-Built as a final year project exploring whether passive HCI signals alone. There is no webcam, no self-reporting. It can reliably predict when someone is about to disengage from work.
+Built as a final year project exploring the use of only passive HCI signals alone, with no webcam and no self-reporting, can reliably predict when someone is about to disengage from work.
+
+## Demo
+
+
+https://github.com/user-attachments/assets/ae5f7767-d448-4caa-a101-09dd111d4f94
+
+
+## Screenshots
+
+![Welcome Page](assets/WelcomePage.png)
+![Dashboard](assets/Dashboard.png)
+![Analytics](assets/Analytics.png)
+![Settings](assets/Settings1.png)
+![Settings](assets/Settings2.png)
+
+## Try it
+
+Download the latest Windows installer from the [Releases page](https://github.com/KashaveSathyvell/Procrastination-Tracker/releases/latest).
 
 ## How it works
 
