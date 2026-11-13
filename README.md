@@ -39,13 +39,14 @@ Download the latest Windows installer from the [Releases page](https://github.co
 
 ## How it works
 
-FocusGuard monitors five behavioural signals over rolling 60-second windows:
+FocusGuard monitors six behavioural signals over rolling 60-second windows:
 
 - Typing speed
 - Mouse velocity
 - Idle ratio
 - Window switching frequency
 - Repetitive key ratio
+- scroll velocity
 
 These signals feed into a **Random Forest classifier** that sorts the user's current state into one of four categories: **Focused**, **At Risk**, **Procrastinating**, or **Idle**.
 
